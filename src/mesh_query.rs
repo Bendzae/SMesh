@@ -8,6 +8,18 @@ pub struct MeshQuery<T> {
     pub value: SMeshResult<T>,
 }
 
+impl<T: PartialEq> PartialEq for MeshQuery<T> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.value.is_err() || other.value.is_err() {
+            return false;
+        }
+        self.value
+            .as_ref()
+            .unwrap()
+            .eq(other.value.as_ref().unwrap())
+    }
+}
+
 impl<E> MeshQuery<E> {
     fn chain_result<T>(&self, result: SMeshResult<T>) -> MeshQuery<T> {
         MeshQuery {
