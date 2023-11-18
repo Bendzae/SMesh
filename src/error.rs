@@ -13,3 +13,12 @@ pub enum SMeshError {
     /// Topology
     TopologyError,
 }
+
+pub type SMeshResult<T> = Result<T, SMeshError>;
+
+#[macro_export]
+macro_rules! bail {
+    ($error:expr) => {
+        return Err($error);
+    };
+}

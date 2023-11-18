@@ -1,4 +1,5 @@
-use crate::error::SMeshError;
+use crate::bail;
+use crate::error::{SMeshError, SMeshResult};
 use glam::{Vec2, Vec3};
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
@@ -61,12 +62,11 @@ impl SMesh {
         id
     }
 
-    pub fn add_face(&mut self, vertices: Vec<VertexId>) -> Result<FaceId, SMeshError> {
+    pub fn add_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
         for v_id in vertices.iter() {
             if !self.q_vert(*v_id).is_boundary() {
-                return Err(SMeshError::TopologyError);
+                bail!(SMeshError::TopologyError);
             }
-            let v = self.q_vert(*v_id).halfedge().run()?;
         }
         todo!()
     }

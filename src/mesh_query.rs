@@ -3,20 +3,19 @@ use crate::smesh::*;
 
 pub struct MeshQuery<'a, T> {
     pub mesh: &'a SMesh,
-    pub value: Result<T, SMeshError>,
+    pub value: SMeshResult<T>,
 }
 
 impl<T> MeshQuery<'_, T> {
-    pub fn run(self) -> Result<T, SMeshError> {
+    pub fn run(self) -> SMeshResult<T> {
         self.value
     }
 }
 
-// TODO: use macro
 pub trait EvalMeshQuery<IdType, ResultType> {
-    fn eval(&self) -> Result<(IdType, ResultType), SMeshError>;
+    fn eval(&self) -> SMeshResult<(IdType, ResultType)>;
 
-    fn res(&self) -> Result<ResultType, SMeshError> {
+    fn res(&self) -> SMeshResult<ResultType> {
         self.eval().map(|(_, result)| result)
     }
 }
@@ -24,7 +23,7 @@ pub trait EvalMeshQuery<IdType, ResultType> {
 macro_rules! eval_mesh_query_impl {
     ($type:ident, $id_type:ident, $container_name:ident, $error_type:ident) => {
         impl EvalMeshQuery<$id_type, $type> for MeshQuery<'_, $id_type> {
-            fn eval(&self) -> Result<($id_type, $type), SMeshError> {
+            fn eval(&self) -> SMeshResult<($id_type, $type)> {
                 self.value
                     .and_then(|id| match self.mesh.$container_name.get(id) {
                         Some(element) => Ok((id, element.clone())),
