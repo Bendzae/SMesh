@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 glam = "0.24.2"
-slotmap ="1.0.6"
+slotmap = "1.0.6"
+itertools = "0.12.0"

@@ -1,6 +1,6 @@
 use crate::smesh::*;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SMeshError {
     /// Query errors
     VertexNotFound(VertexId),
@@ -12,13 +12,18 @@ pub enum SMeshError {
     FaceHasNoHalfEdge(FaceId),
     /// Topology
     TopologyError,
+    /// Other
+    DefaultError,
 }
 
 pub type SMeshResult<T> = Result<T, SMeshError>;
 
 #[macro_export]
 macro_rules! bail {
-    ($error:expr) => {
-        return Err($error);
+    ($error:ident) => {
+        return Err(SMeshError::$error);
+    };
+    ($error:ident, $value:expr) => {
+        return Err(SMeshError::$error($value));
     };
 }
