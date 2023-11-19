@@ -104,6 +104,10 @@ impl<'a> MeshQuery<'a, VertexId> {
     pub fn is_isolated(&self) -> bool {
         self.halfedge().eval().is_err()
     }
+
+    pub fn valence(&self) -> usize {
+        self.vertices().count()
+    }
 }
 
 ///
@@ -136,14 +140,12 @@ impl<'a> MeshQuery<'a, HalfedgeId> {
             .and_then(|(id, he)| he.opposite.ok_or(SMeshError::HalfedgeHasNoRef(id)));
         self.chain_result(res)
     }
-
     pub fn prev(&self) -> MeshQuery<HalfedgeId> {
         let res = self
             .eval()
             .and_then(|(id, he)| he.prev.ok_or(SMeshError::HalfedgeHasNoRef(id)));
         self.chain_result(res)
     }
-
     pub fn next(&self) -> MeshQuery<HalfedgeId> {
         let res = self
             .eval()
@@ -156,15 +158,12 @@ impl<'a> MeshQuery<'a, HalfedgeId> {
     pub fn cw_rotated_neighbour(&self) -> MeshQuery<HalfedgeId> {
         self.chain_result(self.opposite().next().id())
     }
-
     pub fn src_vert(&self) -> MeshQuery<VertexId> {
         self.chain_result(self.opposite().vert().id())
     }
-
     pub fn dst_vert(&self) -> MeshQuery<VertexId> {
         self.chain_result(self.vert().id())
     }
-
     pub fn is_boundary(&self) -> bool {
         self.face().eval().is_err()
     }
@@ -180,6 +179,10 @@ impl<'a> MeshQuery<'a, FaceId> {
             .eval()
             .and_then(|(id, face)| face.halfedge.ok_or(SMeshError::FaceHasNoHalfEdge(id)));
         self.chain_result(res)
+    }
+
+    pub fn valence(&self) -> usize {
+        self.vertices().count()
     }
 }
 
@@ -214,9 +217,9 @@ mod tests {
         let mesh = &mut SMesh::new();
 
         let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
-        let v1 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
-        let v3 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
         let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
 
@@ -232,9 +235,9 @@ mod tests {
         let mesh = &mut SMesh::new();
 
         let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
-        let v1 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
-        let v3 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
         let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
 
@@ -243,6 +246,23 @@ mod tests {
         let he_0_to_1 = mesh.q(v0).halfedge_to(v1).id()?;
         assert_eq!(mesh.q(he_0_to_1).src_vert().id()?, v0);
         assert_eq!(mesh.q(he_0_to_1).dst_vert().id()?, v1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn valence() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+
+        let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+
+        let face_id = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+
+        assert_eq!(mesh.q(face_id).valence(), 4);
+        assert_eq!(mesh.q(v0).valence(), 2);
 
         Ok(())
     }
