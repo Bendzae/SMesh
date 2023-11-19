@@ -247,7 +247,7 @@ impl SMesh {
         Ok(face_id)
     }
 
-    pub fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
+    fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
         let initial_h = self.q(vertex_id).halfedge().id();
         let mut h = initial_h;
 

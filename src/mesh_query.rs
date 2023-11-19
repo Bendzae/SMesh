@@ -150,7 +150,9 @@ impl<'a> MeshQuery<'a, HalfedgeId> {
             .and_then(|(id, he)| he.next.ok_or(SMeshError::HalfedgeHasNoRef(id)));
         self.chain_result(res)
     }
-
+    pub fn ccw_rotated_neighbour(&self) -> MeshQuery<HalfedgeId> {
+        self.chain_result(self.prev().opposite().id())
+    }
     pub fn cw_rotated_neighbour(&self) -> MeshQuery<HalfedgeId> {
         self.chain_result(self.opposite().next().id())
     }
@@ -182,7 +184,7 @@ impl<'a> MeshQuery<'a, FaceId> {
 }
 
 ///
-/// SMesh query initializers
+/// Query initializers
 ///
 
 impl SMesh {
@@ -194,12 +196,39 @@ impl SMesh {
     }
 }
 
+impl Connectivity {
+    pub fn q<T>(&self, id: T) -> MeshQuery<T> {
+        MeshQuery {
+            conn: &self,
+            value: Ok(id),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use glam::vec3;
     #[test]
-    fn test() -> SMeshResult<()> {
+    fn basic() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+
+        let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
+
+        let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
+
+        assert!(face_id.is_ok());
+        assert_eq!(mesh.vertices().len(), 4);
+        assert_eq!(mesh.halfedges().len(), 8);
+        assert_eq!(mesh.faces().len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn halfedge_to() -> SMeshResult<()> {
         let mesh = &mut SMesh::new();
 
         let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
@@ -211,12 +240,9 @@ mod tests {
 
         assert!(face_id.is_ok());
 
-        assert_eq!(mesh.q(face_id?).halfedge().vert().id()?, v3);
-
-        assert_eq!(
-            mesh.q(v0).halfedge_to(v1).id()?,
-            mesh.q(v0).halfedge().id()?
-        );
+        let he_0_to_1 = mesh.q(v0).halfedge_to(v1).id()?;
+        assert_eq!(mesh.q(he_0_to_1).src_vert().id()?, v0);
+        assert_eq!(mesh.q(he_0_to_1).dst_vert().id()?, v1);
 
         Ok(())
     }
