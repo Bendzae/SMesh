@@ -32,7 +32,8 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     let _ = mesh.add_face(vec![v0, v1, v2, v3]);
     let _ = mesh.add_face(vec![v0, v4, v1]);
 
-    let test_he = mesh.q(v0).halfedge().id().unwrap();
+    // let test_he = mesh.q(v0).halfedge().id().unwrap();
+    let test_he = mesh.q(v0).halfedge_to(v1).id().unwrap();
     commands.spawn((
         DebugRenderSMesh {
             mesh,
@@ -98,8 +99,8 @@ fn debug_draw_smesh(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut gizmos:
         // Halfedges
         for (he_id, he) in mesh.halfedges().iter() {
             let opposite = mesh.q(he_id).opposite().id().unwrap();
-            let v_src = he.vertex;
-            let v_dst = mesh.q(opposite).vert().id().unwrap();
+            let v_src = mesh.q(he_id).src_vert().id().unwrap();
+            let v_dst = mesh.q(he_id).dst_vert().id().unwrap();
             let v_src_pos = t.transform_point(*mesh.positions.get(v_src).unwrap());
             let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst).unwrap());
             let color = if debug_smesh.selection == Selection::Halfedge(he_id) {

@@ -104,10 +104,10 @@ impl SMesh {
         let he_0_id = halfedges.insert(Halfedge::default());
         let he_1_id = halfedges.insert(Halfedge::default());
         let he_0 = halfedges.get_mut(he_0_id).unwrap();
-        he_0.vertex = v0;
+        he_0.vertex = v1;
         he_0.opposite = Some(he_1_id);
         let he_1 = halfedges.get_mut(he_1_id).unwrap();
-        he_1.vertex = v1;
+        he_1.vertex = v0;
         he_1.opposite = Some(he_0_id);
         he_0_id
     }

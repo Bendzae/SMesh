@@ -79,26 +79,20 @@ impl<'a> MeshQuery<'a, VertexId> {
 
         let res = loop {
             let inner_he = self.chain_result(he);
-            match inner_he.vert().id() {
+            match inner_he.dst_vert().id() {
                 Ok(id) => {
                     if id == dst_vertex {
                         break inner_he.id();
+                    }
+                    he = inner_he.cw_rotated_neighbour().id();
+                    if he == initial_he {
+                        break Err(SMeshError::DefaultError);
                     }
                 }
                 Err(e) => {
                     break Err(e);
                 }
             }
-
-            let he_rot = inner_he.cw_rotated_neighbour().id();
-
-            if he_rot.is_err() {
-                break he_rot;
-            }
-            if he_rot == initial_he {
-                break Err(SMeshError::DefaultError);
-            }
-            he = he_rot;
         };
         self.chain_result(res)
     }
@@ -159,6 +153,14 @@ impl<'a> MeshQuery<'a, HalfedgeId> {
 
     pub fn cw_rotated_neighbour(&self) -> MeshQuery<HalfedgeId> {
         self.chain_result(self.opposite().next().id())
+    }
+
+    pub fn src_vert(&self) -> MeshQuery<VertexId> {
+        self.chain_result(self.opposite().vert().id())
+    }
+
+    pub fn dst_vert(&self) -> MeshQuery<VertexId> {
+        self.chain_result(self.vert().id())
     }
 
     pub fn is_boundary(&self) -> bool {
