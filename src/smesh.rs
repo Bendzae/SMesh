@@ -1,11 +1,10 @@
-use crate::bail;
-use crate::error::{SMeshError, SMeshResult};
-use crate::mesh_query::{EvalMeshQuery, MeshQuery};
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
-use std::cell::{RefCell, RefMut};
-use std::rc::Rc;
+
+use crate::bail;
+use crate::error::{SMeshError, SMeshResult};
+use crate::mesh_query::{EvalMeshQuery, MeshQuery};
 
 new_key_type! { pub struct VertexId; }
 new_key_type! { pub struct HalfedgeId; }
@@ -45,20 +44,9 @@ pub struct Connectivity {
     pub faces: SlotMap<FaceId, Face>,
 }
 
-impl Connectivity {
-    pub fn vert_mut(&mut self, vertex_id: VertexId) -> &mut Vertex {
-        self.vertices.get_mut(vertex_id).unwrap()
-    }
-    pub fn he_mut(&mut self, halfedge_id: HalfedgeId) -> &mut Halfedge {
-        self.halfedges.get_mut(halfedge_id).unwrap()
-    }
-    pub fn face_mut(&mut self, face_id: FaceId) -> &mut Face {
-        self.faces.get_mut(face_id).unwrap()
-    }
-}
 #[derive(Debug, Clone, Default)]
 pub struct SMesh {
-    pub connectivity: Rc<RefCell<Connectivity>>,
+    pub connectivity: Connectivity,
 
     // Attributes
     pub positions: SecondaryMap<VertexId, Vec3>,
@@ -70,50 +58,46 @@ pub struct SMesh {
 impl SMesh {
     pub fn new() -> Self {
         Self {
-            connectivity: Rc::new(RefCell::new(Connectivity::default())),
+            connectivity: Connectivity::default(),
             ..Default::default()
         }
     }
-    pub fn connectivity_mut(&mut self) -> RefMut<'_, Connectivity> {
-        self.connectivity.borrow_mut()
+    pub fn vertices_mut(&mut self) -> &mut SlotMap<VertexId, Vertex> {
+        &mut self.connectivity.vertices
     }
-    // pub fn vertices_mut(&mut self) -> &mut SlotMap<VertexId, Vertex> {
-    //     todo!()
-    // }
-    // pub fn halfedges_mut(&mut self) -> &mut SlotMap<HalfedgeId, Halfedge> {
-    //     &mut self.connectivity_mut().halfedges
-    // }
-    // pub fn faces_mut(&mut self) -> &mut SlotMap<FaceId, Face> {
-    //     &mut self.connectivity_mut().faces
-    // }
-    //
-    // pub fn vert_mut(&mut self, id: VertexId) -> &mut Vertex {
-    //     self.vertices_mut().get_mut(id).unwrap()
-    // }
-    // pub fn he_mut(&mut self, id: HalfedgeId) -> &mut Halfedge {
-    //     self.halfedges_mut().get_mut(id).unwrap()
-    // }
-    // pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
-    //     self.faces_mut().get_mut(id).unwrap()
-    // }
+    pub fn halfedges_mut(&mut self) -> &mut SlotMap<HalfedgeId, Halfedge> {
+        &mut self.connectivity.halfedges
+    }
+    pub fn faces_mut(&mut self) -> &mut SlotMap<FaceId, Face> {
+        &mut self.connectivity.faces
+    }
+    pub fn vert_mut(&mut self, id: VertexId) -> &mut Vertex {
+        self.vertices_mut().get_mut(id).unwrap()
+    }
+    pub fn he_mut(&mut self, id: HalfedgeId) -> &mut Halfedge {
+        self.halfedges_mut().get_mut(id).unwrap()
+    }
+    pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
+        self.faces_mut().get_mut(id).unwrap()
+    }
 }
 
 /// Add elements
 impl SMesh {
     pub fn add_vertex(&mut self, position: Vec3) -> VertexId {
-        let id = self.connectivity_mut().vertices.insert(Vertex::default());
+        let id = self.vertices_mut().insert(Vertex::default());
         self.positions.insert(id, position);
         id
     }
 
     pub fn add_edge(&mut self, v0: VertexId, v1: VertexId) -> HalfedgeId {
-        let mut conn = self.connectivity_mut();
-        let he_0_id = conn.halfedges.insert(Halfedge::default());
-        let he_1_id = conn.halfedges.insert(Halfedge::default());
-        let mut he_0 = conn.halfedges.get_mut(he_0_id).unwrap();
+        let halfedges = self.halfedges_mut();
+        let he_0_id = halfedges.insert(Halfedge::default());
+        let he_1_id = halfedges.insert(Halfedge::default());
+        let he_0 = halfedges.get_mut(he_0_id).unwrap();
         he_0.vertex = v0;
         he_0.opposite = Some(he_1_id);
-        let mut he_1 = conn.halfedges.get_mut(he_1_id).unwrap();
+        let he_1 = halfedges.get_mut(he_1_id).unwrap();
         he_1.vertex = v1;
         he_1.opposite = Some(he_0_id);
         he_0_id
@@ -163,18 +147,20 @@ impl SMesh {
                     // free gap will be between boundaryPrev and boundaryNext
                     let outer_prev = inner_next.opposite();
                     let outer_next = inner_prev.opposite();
-                    let mut boundary_prev = outer_prev.clone();
+                    let mut boundary_prev = outer_prev.id()?;
                     loop {
-                        boundary_prev = boundary_prev.next().opposite();
-                        if !boundary_prev.is_boundary() || boundary_prev == inner_prev {
+                        boundary_prev = self.q(boundary_prev).next().opposite().id()?;
+                        if !self.q(boundary_prev).is_boundary()
+                            || boundary_prev == inner_prev.id()?
+                        {
                             break;
                         }
                     }
-                    let boundary_next = boundary_prev.next();
+                    let boundary_next = self.q(boundary_prev).next().id()?;
 
-                    if !boundary_prev.is_boundary()
-                        || !boundary_next.is_boundary()
-                        || boundary_next == inner_next
+                    if !self.q(boundary_prev).is_boundary()
+                        || !self.q(boundary_next).is_boundary()
+                        || boundary_next == inner_next.id()?
                     {
                         bail!(TopologyError);
                     }
@@ -184,8 +170,8 @@ impl SMesh {
                     let patch_end = inner_next.prev().id()?;
 
                     // save relink info
-                    next_cache.push((boundary_prev.id()?, patch_start));
-                    next_cache.push((patch_end, boundary_next.id()?));
+                    next_cache.push((boundary_prev, patch_start));
+                    next_cache.push((patch_end, boundary_next));
                     next_cache.push((inner_prev.id()?, inner_next.id()?));
                 }
             }
@@ -195,7 +181,7 @@ impl SMesh {
         let face = Face {
             halfedge: Some(halfedeges.get(n - 1).unwrap().0),
         };
-        let face_id = self.connectivity_mut().faces.insert(face);
+        let face_id = self.faces_mut().insert(face);
 
         for (i, ii) in (0..n).circular_tuple_windows() {
             let v = vertices[ii];
@@ -209,12 +195,12 @@ impl SMesh {
                 if prev_new && !next_new {
                     let boundary_prev = self.q(inner_next).prev().id()?;
                     next_cache.push((boundary_prev, outer_next));
-                    self.connectivity_mut().vert_mut(v).halfedge = Some(outer_next);
+                    self.vert_mut(v).halfedge = Some(outer_next);
                 }
                 if !prev_new && next_new {
                     let boundary_next = self.q(inner_prev).next().id()?;
                     next_cache.push((outer_prev, boundary_next));
-                    self.connectivity_mut().vert_mut(v).halfedge = Some(boundary_next);
+                    self.vert_mut(v).halfedge = Some(boundary_next);
                 }
                 if prev_new && next_new {
                     match self.q(v).halfedge().id() {
@@ -224,7 +210,7 @@ impl SMesh {
                             next_cache.push((outer_prev, boundary_next));
                         }
                         Err(_) => {
-                            self.connectivity_mut().vert_mut(v).halfedge = Some(outer_next);
+                            self.vert_mut(v).halfedge = Some(outer_next);
                             next_cache.push((outer_prev, outer_next))
                         }
                     }
@@ -236,13 +222,13 @@ impl SMesh {
             }
 
             // set face id
-            self.connectivity_mut().he_mut(halfedeges[i].0).face = Some(face_id);
+            self.he_mut(halfedeges[i].0).face = Some(face_id);
         }
 
         // process next halfedge cache
         for (first, second) in next_cache {
-            self.connectivity_mut().he_mut(first).next = Some(second);
-            self.connectivity_mut().he_mut(second).prev = Some(first);
+            self.he_mut(first).next = Some(second);
+            self.he_mut(second).prev = Some(first);
         }
 
         for v_id in needs_adjust {
@@ -253,17 +239,17 @@ impl SMesh {
     }
 
     pub fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
-        let mut h = self.q(vertex_id).halfedge();
-        let hh = h.clone();
+        let initial_h = self.q(vertex_id).halfedge().id();
+        let mut h = initial_h;
 
-        if h.id().is_ok() {
+        if h.is_ok() {
             loop {
-                if h.is_boundary() {
-                    self.connectivity_mut().vert_mut(vertex_id).halfedge = Some(h.id()?);
+                if self.q(h?).is_boundary() {
+                    self.vert_mut(vertex_id).halfedge = Some(h?);
                     return Ok(());
                 }
-                h = h.cw_rotated_neighbour();
-                if h == hh {
+                h = self.q(h?).cw_rotated_neighbour().id();
+                if h == initial_h {
                     break;
                 }
             }

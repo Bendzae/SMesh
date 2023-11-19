@@ -1,15 +1,13 @@
 use crate::error::*;
 use crate::smesh::*;
-use std::cell::RefCell;
-use std::rc::Rc;
 
 #[derive(Debug, Clone)]
-pub struct MeshQuery<T> {
-    pub conn: Rc<RefCell<Connectivity>>,
+pub struct MeshQuery<'a, T> {
+    pub conn: &'a Connectivity,
     pub value: SMeshResult<T>,
 }
 
-impl<T: PartialEq> PartialEq for MeshQuery<T> {
+impl<'a, T: PartialEq> PartialEq for MeshQuery<'a, T> {
     fn eq(&self, other: &Self) -> bool {
         if self.value.is_err() || other.value.is_err() {
             return false;
@@ -21,10 +19,10 @@ impl<T: PartialEq> PartialEq for MeshQuery<T> {
     }
 }
 
-impl<E> MeshQuery<E> {
+impl<'a, E> MeshQuery<'a, E> {
     fn chain_result<T>(&self, result: SMeshResult<T>) -> MeshQuery<T> {
         MeshQuery {
-            conn: self.conn.clone(),
+            conn: self.conn,
             value: result,
         }
     }
@@ -40,13 +38,13 @@ pub trait EvalMeshQuery<IdType, ResultType> {
 
 macro_rules! eval_mesh_query_impl {
     ($type:ident, $id_type:ident, $container_name:ident, $error_type:ident) => {
-        impl EvalMeshQuery<$id_type, $type> for MeshQuery<$id_type> {
+        impl<'a> EvalMeshQuery<$id_type, $type> for MeshQuery<'a, $id_type> {
             fn id(&self) -> SMeshResult<$id_type> {
                 self.value.clone()
             }
             fn eval(&self) -> SMeshResult<($id_type, $type)> {
                 self.value
-                    .and_then(|id| match self.conn.borrow().$container_name.get(id) {
+                    .and_then(|id| match self.conn.$container_name.get(id) {
                         Some(element) => Ok((id, element.clone())),
                         None => Err(SMeshError::$error_type(id)),
                     })
@@ -67,7 +65,7 @@ eval_mesh_query_impl!(Face, FaceId, faces, FaceNotFound);
 /// Vertex
 ///
 
-impl MeshQuery<VertexId> {
+impl<'a> MeshQuery<'a, VertexId> {
     pub fn halfedge(&self) -> MeshQuery<HalfedgeId> {
         let res = self
             .eval()
@@ -76,28 +74,28 @@ impl MeshQuery<VertexId> {
     }
 
     pub fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQuery<HalfedgeId> {
-        let initial_he = self.halfedge();
-        let mut he = self.halfedge();
+        let initial_he = self.halfedge().id();
+        let mut he = initial_he.clone();
 
         let res = loop {
-            match &he.vert().id() {
+            let inner_he = self.chain_result(he);
+            match inner_he.vert().id() {
                 Ok(id) => {
-                    if *id == dst_vertex {
-                        break he.id();
+                    if id == dst_vertex {
+                        break inner_he.id();
                     }
                 }
                 Err(e) => {
-                    break Err(*e);
+                    break Err(e);
                 }
             }
 
-            let he_rot = he.cw_rotated_neighbour();
-            let he_rot_id = he_rot.id();
+            let he_rot = inner_he.cw_rotated_neighbour().id();
 
-            if he_rot_id.is_err() {
-                break he_rot_id;
+            if he_rot.is_err() {
+                break he_rot;
             }
-            if he_rot_id == initial_he.clone().id() {
+            if he_rot == initial_he {
                 break Err(SMeshError::DefaultError);
             }
             he = he_rot;
@@ -118,7 +116,7 @@ impl MeshQuery<VertexId> {
 /// Halfedge
 ///
 
-impl MeshQuery<HalfedgeId> {
+impl<'a> MeshQuery<'a, HalfedgeId> {
     pub fn vert(&self) -> MeshQuery<VertexId> {
         let res = self.eval().map(|(_, he)| he.vertex);
         self.chain_result(res)
@@ -128,10 +126,7 @@ impl MeshQuery<HalfedgeId> {
         let res = self
             .eval()
             .and_then(|(id, he)| he.edge.ok_or(SMeshError::HalfedgeHasNoRef(id)));
-        MeshQuery {
-            conn: self.conn.clone(),
-            value: res,
-        }
+        self.chain_result(res)
     }
 
     pub fn face(&self) -> MeshQuery<FaceId> {
@@ -175,7 +170,7 @@ impl MeshQuery<HalfedgeId> {
 /// Face
 ///
 
-impl MeshQuery<FaceId> {
+impl<'a> MeshQuery<'a, FaceId> {
     pub fn halfedge(&self) -> MeshQuery<HalfedgeId> {
         let res = self
             .eval()
@@ -191,7 +186,7 @@ impl MeshQuery<FaceId> {
 impl SMesh {
     pub fn q<T>(&self, id: T) -> MeshQuery<T> {
         MeshQuery {
-            conn: self.connectivity.clone(),
+            conn: &self.connectivity,
             value: Ok(id),
         }
     }
@@ -203,7 +198,7 @@ mod tests {
     use glam::vec3;
     #[test]
     fn test() {
-        let mut mesh = &mut SMesh::new();
+        let mesh = &mut SMesh::new();
 
         let verts = vec![
             mesh.add_vertex(vec3(-1.0, -1.0, 0.0)),
