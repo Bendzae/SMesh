@@ -2,6 +2,39 @@ use crate::error::SMeshError;
 use crate::mesh_query::{EvalMeshQuery, MeshQuery};
 use crate::smesh::{Connectivity, HalfedgeId, VertexId};
 
+pub struct HalfedgeAroundVertexIter<'a> {
+    conn: &'a Connectivity,
+    start: HalfedgeId,
+    current: Option<HalfedgeId>,
+}
+
+impl<'a> HalfedgeAroundVertexIter<'a> {
+    pub fn new(
+        connectivity: &'a Connectivity,
+        vertex_id: VertexId,
+    ) -> HalfedgeAroundVertexIter<'a> {
+        let start = connectivity.q(vertex_id).halfedge().id().unwrap();
+        HalfedgeAroundVertexIter {
+            conn: connectivity,
+            start,
+            current: Some(start),
+        }
+    }
+}
+
+impl<'a> Iterator for HalfedgeAroundVertexIter<'a> {
+    type Item = HalfedgeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Some(current) = self.current else {
+            return None;
+        };
+        let next = self.conn.q(current).ccw_rotated_neighbour().id().unwrap();
+        self.current = if next == self.start { None } else { Some(next) };
+        Some(current)
+    }
+}
+
 pub struct VertexAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
