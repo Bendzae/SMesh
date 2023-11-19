@@ -75,7 +75,7 @@ impl<'a> MeshQuery<'a, VertexId> {
 
     pub fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQuery<HalfedgeId> {
         let initial_he = self.halfedge().id();
-        let mut he = initial_he.clone();
+        let mut he = initial_he;
 
         let res = loop {
             let inner_he = self.chain_result(he);
@@ -197,18 +197,25 @@ mod tests {
     use super::*;
     use glam::vec3;
     #[test]
-    fn test() {
+    fn test() -> SMeshResult<()> {
         let mesh = &mut SMesh::new();
 
-        let verts = vec![
-            mesh.add_vertex(vec3(-1.0, -1.0, 0.0)),
-            mesh.add_vertex(vec3(-1.0, 1.0, 0.0)),
-            mesh.add_vertex(vec3(1.0, 1.0, 0.0)),
-            mesh.add_vertex(vec3(1.0, -1.0, 0.0)),
-        ];
+        let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
 
-        let face_id = mesh.add_face(verts);
+        let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
 
-        assert!(face_id.is_ok())
+        assert!(face_id.is_ok());
+
+        assert_eq!(mesh.q(face_id?).halfedge().vert().id()?, v3);
+
+        assert_eq!(
+            mesh.q(v0).halfedge_to(v1).id()?,
+            mesh.q(v0).halfedge().id()?
+        );
+
+        Ok(())
     }
 }

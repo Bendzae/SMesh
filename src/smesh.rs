@@ -62,6 +62,15 @@ impl SMesh {
             ..Default::default()
         }
     }
+    pub fn vertices(&self) -> &SlotMap<VertexId, Vertex> {
+        &self.connectivity.vertices
+    }
+    pub fn halfedges(&self) -> &SlotMap<HalfedgeId, Halfedge> {
+        &self.connectivity.halfedges
+    }
+    pub fn faces(&self) -> &SlotMap<FaceId, Face> {
+        &self.connectivity.faces
+    }
     pub fn vertices_mut(&mut self) -> &mut SlotMap<VertexId, Vertex> {
         &mut self.connectivity.vertices
     }
