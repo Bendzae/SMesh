@@ -1,10 +1,11 @@
 use crate::error::*;
 use crate::smesh::*;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct MeshQuery<T> {
-    pub conn: Rc<Connectivity>,
+    pub conn: Rc<RefCell<Connectivity>>,
     pub value: SMeshResult<T>,
 }
 
@@ -45,7 +46,7 @@ macro_rules! eval_mesh_query_impl {
             }
             fn eval(&self) -> SMeshResult<($id_type, $type)> {
                 self.value
-                    .and_then(|id| match self.conn.$container_name.get(id) {
+                    .and_then(|id| match self.conn.borrow().$container_name.get(id) {
                         Some(element) => Ok((id, element.clone())),
                         None => Err(SMeshError::$error_type(id)),
                     })
@@ -199,8 +200,20 @@ impl SMesh {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::vec3;
     #[test]
     fn test() {
-        let mesh = SMesh::new();
+        let mut mesh = &mut SMesh::new();
+
+        let verts = vec![
+            mesh.add_vertex(vec3(-1.0, -1.0, 0.0)),
+            mesh.add_vertex(vec3(-1.0, 1.0, 0.0)),
+            mesh.add_vertex(vec3(1.0, 1.0, 0.0)),
+            mesh.add_vertex(vec3(1.0, -1.0, 0.0)),
+        ];
+
+        let face_id = mesh.add_face(verts);
+
+        assert!(face_id.is_ok())
     }
 }
