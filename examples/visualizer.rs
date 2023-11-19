@@ -32,8 +32,7 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     let _ = mesh.add_face(vec![v0, v1, v2, v3]);
     let _ = mesh.add_face(vec![v0, v4, v1]);
 
-    // let test_he = mesh.q(v0).halfedge().id().unwrap();
-    let test_he = mesh.q(v0).halfedge().cw_rotated_neighbour().id().unwrap();
+    let test_he = mesh.q(v0).halfedge().id().unwrap();
     commands.spawn((
         DebugRenderSMesh {
             mesh,
@@ -42,16 +41,37 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
         TransformBundle::default(),
     ));
 
-    // Light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
-            intensity: 1500.0,
-            shadows_enabled: true,
-            ..default()
-        },
-        transform: Transform::from_xyz(4.0, 8.0, 4.0),
+    // UI
+    let style = TextStyle {
+        font_size: 32.0,
         ..default()
-    });
+    };
+
+    // root node
+    commands
+        .spawn(NodeBundle {
+            style: Style {
+                flex_direction: FlexDirection::Column,
+                column_gap: Val::Px(5.0),
+                padding: UiRect::all(Val::Px(5.0)),
+                ..default()
+            },
+            ..default()
+        })
+        .with_children(|parent| {
+            for s in [
+                "N: next halfedge",
+                "P: previous halfedge",
+                "O: opposite halfedge",
+                "R: cw rotated halfedge",
+                "V: Source Vertex",
+            ]
+            .iter()
+            {
+                parent.spawn(TextBundle::from_section(*s, style.clone()));
+            }
+        });
+
     // Camera
     commands.spawn((
         Camera3dBundle {
@@ -109,6 +129,50 @@ fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
     gizmos.line(line_end - dir * 0.05 + offset * 0.5, line_end, color);
 }
 
+fn change_selection_system(input: Res<Input<KeyCode>>, mut q_smesh: Query<&mut DebugRenderSMesh>) {
+    for mut debug_smesh in q_smesh.iter_mut() {
+        match debug_smesh.selection {
+            Selection::Vertex(id) => {
+                if input.just_pressed(KeyCode::N) {
+                    debug_smesh.selection =
+                        Selection::Halfedge(debug_smesh.mesh.q(id).halfedge().id().unwrap());
+                }
+            }
+            Selection::Halfedge(id) => {
+                if input.just_pressed(KeyCode::N) {
+                    debug_smesh.selection =
+                        Selection::Halfedge(debug_smesh.mesh.q(id).next().id().unwrap());
+                }
+                if input.just_pressed(KeyCode::P) {
+                    debug_smesh.selection =
+                        Selection::Halfedge(debug_smesh.mesh.q(id).prev().id().unwrap());
+                }
+                if input.just_pressed(KeyCode::O) {
+                    debug_smesh.selection =
+                        Selection::Halfedge(debug_smesh.mesh.q(id).opposite().id().unwrap());
+                }
+                if input.just_pressed(KeyCode::R) {
+                    debug_smesh.selection = Selection::Halfedge(
+                        debug_smesh.mesh.q(id).cw_rotated_neighbour().id().unwrap(),
+                    );
+                }
+                if input.just_pressed(KeyCode::V) {
+                    debug_smesh.selection =
+                        Selection::Vertex(debug_smesh.mesh.q(id).vert().id().unwrap());
+                }
+            }
+            Selection::Face(_) => {}
+            Selection::None => {}
+        }
+    }
+}
+
+fn selection_log_system(q_sel: Query<&DebugRenderSMesh, Changed<DebugRenderSMesh>>) {
+    for d in q_sel.iter() {
+        info!("Selected: {:?}", d.selection);
+    }
+}
+
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
@@ -120,9 +184,16 @@ fn main() {
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
-            WorldInspectorPlugin::default(),
+            // WorldInspectorPlugin::default(),
         ))
         .add_systems(Startup, init_system)
-        .add_systems(Update, debug_draw_smesh)
+        .add_systems(
+            Update,
+            (
+                debug_draw_smesh,
+                change_selection_system,
+                selection_log_system,
+            ),
+        )
         .run();
 }
