@@ -1,11 +1,7 @@
 use bevy::prelude::*;
-use bevy_inspector_egui::egui::Order::Debug;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
-use smesh::error::SMeshResult;
-use smesh::mesh_query::EvalMeshQuery;
-use smesh::smesh::{FaceId, HalfedgeId, SMesh, VertexId};
+use smesh::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Selection {

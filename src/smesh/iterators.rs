@@ -1,5 +1,4 @@
-use crate::mesh_query::{EvalMeshQuery, MeshQuery};
-use crate::smesh::{Connectivity, FaceId, HalfedgeId, SMesh, VertexId};
+use crate::smesh::*;
 pub struct HalfedgeAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -118,7 +117,6 @@ impl MeshQuery<'_, FaceId> {
 
 mod test {
     use super::*;
-    use crate::smesh::SMesh;
     use glam::vec3;
     use itertools::Itertools;
 

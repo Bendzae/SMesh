@@ -1,5 +1,3 @@
-use crate::error::SMeshResult;
-use crate::mesh_query::EvalMeshQuery;
 use crate::smesh::*;
 
 ///

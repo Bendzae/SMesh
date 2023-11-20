@@ -3,8 +3,14 @@ use itertools::Itertools;
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use crate::bail;
-use crate::error::{SMeshError, SMeshResult};
-use crate::mesh_query::{EvalMeshQuery, MeshQuery};
+use crate::smesh::error::*;
+use crate::smesh::mesh_query::*;
+
+pub mod attribute;
+pub mod error;
+pub mod iterators;
+pub mod mesh_query;
+pub mod topological_operations;
 
 new_key_type! { pub struct VertexId; }
 new_key_type! { pub struct HalfedgeId; }
@@ -91,14 +97,17 @@ impl SMesh {
     }
 }
 
-/// Add elements
+/// Operations for adding mesh elements
 impl SMesh {
+    /// Create an isolated vertex to the mesh
     pub fn add_vertex(&mut self, position: Vec3) -> VertexId {
         let id = self.vertices_mut().insert(Vertex::default());
         self.positions.insert(id, position);
         id
     }
 
+    /// Create an edge (2 halfedges) between two isolated vertices
+    /// CARE!: This does not take care of connectivity for next/prev edges
     pub fn add_edge(&mut self, v0: VertexId, v1: VertexId) -> (HalfedgeId, HalfedgeId) {
         let halfedges = self.halfedges_mut();
         let he_0_id = halfedges.insert(Halfedge::default());
@@ -112,6 +121,8 @@ impl SMesh {
         (he_0_id, he_1_id)
     }
 
+    /// Construct a new face from a list of existing vertices
+    /// Takes care of connectivity
     pub fn add_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
         let n = vertices.len();
         if n < 3 {
@@ -248,7 +259,7 @@ impl SMesh {
         Ok(face_id)
     }
 
-    pub fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
+    pub(crate) fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
         let initial_h = self.q(vertex_id).halfedge().id();
         let mut h = initial_h;
 

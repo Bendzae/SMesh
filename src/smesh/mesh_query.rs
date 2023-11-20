@@ -1,4 +1,3 @@
-use crate::error::*;
 use crate::smesh::*;
 
 #[derive(Debug, Clone)]
