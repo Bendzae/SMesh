@@ -1,26 +1,10 @@
 use crate::mesh_query::{EvalMeshQuery, MeshQuery};
 use crate::smesh::{Connectivity, FaceId, HalfedgeId, SMesh, VertexId};
-
 pub struct HalfedgeAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
     current: Option<HalfedgeId>,
 }
-
-impl<'a> HalfedgeAroundVertexIter<'a> {
-    pub fn new(
-        connectivity: &'a Connectivity,
-        vertex_id: VertexId,
-    ) -> HalfedgeAroundVertexIter<'a> {
-        let start = connectivity.q(vertex_id).halfedge().id().unwrap();
-        HalfedgeAroundVertexIter {
-            conn: connectivity,
-            start,
-            current: Some(start),
-        }
-    }
-}
-
 impl<'a> Iterator for HalfedgeAroundVertexIter<'a> {
     type Item = HalfedgeId;
 
@@ -39,18 +23,6 @@ pub struct VertexAroundVertexIter<'a> {
     start: HalfedgeId,
     current: Option<HalfedgeId>,
 }
-
-impl<'a> VertexAroundVertexIter<'a> {
-    pub fn new(connectivity: &'a Connectivity, vertex_id: VertexId) -> VertexAroundVertexIter<'a> {
-        let start = connectivity.q(vertex_id).halfedge().id().unwrap();
-        VertexAroundVertexIter {
-            conn: connectivity,
-            start,
-            current: Some(start),
-        }
-    }
-}
-
 impl<'a> Iterator for VertexAroundVertexIter<'a> {
     type Item = VertexId;
 
@@ -71,17 +43,6 @@ pub struct VertexAroundFaceIter<'a> {
     current: Option<HalfedgeId>,
 }
 
-impl<'a> VertexAroundFaceIter<'a> {
-    pub fn new(connectivity: &'a Connectivity, face_id: FaceId) -> VertexAroundFaceIter<'a> {
-        let start = connectivity.q(face_id).halfedge().id().unwrap();
-        VertexAroundFaceIter {
-            conn: connectivity,
-            start,
-            current: Some(start),
-        }
-    }
-}
-
 impl<'a> Iterator for VertexAroundFaceIter<'a> {
     type Item = VertexId;
 
@@ -96,19 +57,62 @@ impl<'a> Iterator for VertexAroundFaceIter<'a> {
     }
 }
 
+pub struct HalfedgeAroundFaceIter<'a> {
+    conn: &'a Connectivity,
+    start: HalfedgeId,
+    current: Option<HalfedgeId>,
+}
+
+impl<'a> Iterator for HalfedgeAroundFaceIter<'a> {
+    type Item = HalfedgeId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Some(current) = self.current else {
+            return None;
+        };
+        let next = self.conn.q(current).next().id().unwrap();
+        self.current = if next == self.start { None } else { Some(next) };
+        Some(current)
+    }
+}
+
 impl MeshQuery<'_, VertexId> {
     pub fn vertices(&self) -> VertexAroundVertexIter {
-        VertexAroundVertexIter::new(&self.conn, self.id().unwrap())
+        let start = self.halfedge().id().unwrap();
+        VertexAroundVertexIter {
+            conn: self.conn,
+            start,
+            current: Some(start),
+        }
     }
 
     pub fn halfedges(&self) -> HalfedgeAroundVertexIter {
-        HalfedgeAroundVertexIter::new(&self.conn, self.id().unwrap())
+        let start = self.halfedge().id().unwrap();
+        HalfedgeAroundVertexIter {
+            conn: self.conn,
+            start,
+            current: Some(start),
+        }
     }
 }
 
 impl MeshQuery<'_, FaceId> {
     pub fn vertices(&self) -> VertexAroundFaceIter {
-        VertexAroundFaceIter::new(&self.conn, self.id().unwrap())
+        let start = self.halfedge().id().unwrap();
+        VertexAroundFaceIter {
+            conn: self.conn,
+            start,
+            current: Some(start),
+        }
+    }
+
+    pub fn halfedges(&self) -> VertexAroundFaceIter {
+        let start = self.halfedge().id().unwrap();
+        VertexAroundFaceIter {
+            conn: self.conn,
+            start,
+            current: Some(start),
+        }
     }
 }
 

@@ -3,6 +3,7 @@ use bevy_inspector_egui::egui::Order::Debug;
 use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
+use smesh::error::SMeshResult;
 use smesh::mesh_query::EvalMeshQuery;
 use smesh::smesh::{FaceId, HalfedgeId, SMesh, VertexId};
 
@@ -31,6 +32,9 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
     let _ = mesh.add_face(vec![v0, v1, v2, v3]);
     let _ = mesh.add_face(vec![v0, v4, v1]);
+
+    // let v4 = mesh.add_vertex(vec3(1.0, 2.0, 0.0));
+    // mesh.add_edge(v2, v4);
 
     // let test_he = mesh.q(v0).halfedge().id().unwrap();
     let test_he = mesh.q(v0).halfedge_to(v1).id().unwrap();
@@ -160,6 +164,22 @@ fn change_selection_system(input: Res<Input<KeyCode>>, mut q_smesh: Query<&mut D
                 if input.just_pressed(KeyCode::V) {
                     debug_smesh.selection =
                         Selection::Vertex(debug_smesh.mesh.q(id).vert().id().unwrap());
+                }
+                if input.just_pressed(KeyCode::S) {
+                    let m = &mut debug_smesh.mesh;
+                    let v0 = m.q(id).src_vert().id().unwrap();
+                    let v1 = m.q(id).dst_vert().id().unwrap();
+                    let pos = (m.positions[v0] + m.positions[v1]) / 2.0;
+                    let v = debug_smesh.mesh.add_vertex(pos);
+                    let he = debug_smesh.mesh.insert_vertex(id, v);
+                    match he {
+                        Ok(he) => {
+                            debug_smesh.selection = Selection::Halfedge(he);
+                        }
+                        Err(e) => {
+                            error!("{:?}", e)
+                        }
+                    }
                 }
             }
             Selection::Face(_) => {}

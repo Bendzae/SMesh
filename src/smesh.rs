@@ -99,7 +99,7 @@ impl SMesh {
         id
     }
 
-    pub fn add_edge(&mut self, v0: VertexId, v1: VertexId) -> HalfedgeId {
+    pub fn add_edge(&mut self, v0: VertexId, v1: VertexId) -> (HalfedgeId, HalfedgeId) {
         let halfedges = self.halfedges_mut();
         let he_0_id = halfedges.insert(Halfedge::default());
         let he_1_id = halfedges.insert(Halfedge::default());
@@ -109,7 +109,7 @@ impl SMesh {
         let he_1 = halfedges.get_mut(he_1_id).unwrap();
         he_1.vertex = v0;
         he_1.opposite = Some(he_0_id);
-        he_0_id
+        (he_0_id, he_1_id)
     }
 
     pub fn add_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
@@ -137,7 +137,8 @@ impl SMesh {
                 }
                 Err(_) => {
                     // New halfedge
-                    let he_id = self.add_edge(*v0, *v1);
+                    // TODO: Check if only one he should be added here?
+                    let (he_id, _) = self.add_edge(*v0, *v1);
                     halfedeges.push((he_id, true));
                 }
             }
@@ -247,22 +248,20 @@ impl SMesh {
         Ok(face_id)
     }
 
-    fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
+    pub fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
         let initial_h = self.q(vertex_id).halfedge().id();
         let mut h = initial_h;
 
-        if h.is_ok() {
-            loop {
-                if self.q(h?).is_boundary() {
-                    self.vert_mut(vertex_id).halfedge = Some(h?);
-                    return Ok(());
-                }
-                h = self.q(h?).cw_rotated_neighbour().id();
-                if h == initial_h {
-                    break;
-                }
+        loop {
+            if self.q(h?).is_boundary() {
+                self.vert_mut(vertex_id).halfedge = Some(h?);
+                break;
+            }
+            h = self.q(h?).cw_rotated_neighbour().id();
+            if h == initial_h {
+                break;
             }
         }
-        bail!(DefaultError);
+        Ok(())
     }
 }

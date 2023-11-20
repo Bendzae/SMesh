@@ -108,6 +108,16 @@ impl<'a> MeshQuery<'a, VertexId> {
     pub fn valence(&self) -> usize {
         self.vertices().count()
     }
+
+    // The vertex is non-manifold if more than one gap exists, i.e.
+    // more than one outgoing boundary halfedge.
+    pub fn is_manifold(&self) -> bool {
+        let n = self
+            .halfedges()
+            .filter(|he| self.conn.q(*he).is_boundary())
+            .count();
+        n < 2
+    }
 }
 
 ///
@@ -209,7 +219,7 @@ impl Connectivity {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use glam::vec3;
     #[test]
@@ -259,10 +269,26 @@ mod tests {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+        let face_id = mesh.add_face(vec![v0, v1, v2, v3])?;
 
         assert_eq!(mesh.q(face_id).valence(), 4);
         assert_eq!(mesh.q(v0).valence(), 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn manifoldness() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+
+        let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+
+        mesh.add_face(vec![v0, v1, v2, v3])?;
+        assert!(mesh.q(v0).is_manifold());
+        assert!(mesh.q(v3).is_manifold());
 
         Ok(())
     }
