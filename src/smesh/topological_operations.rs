@@ -1,3 +1,5 @@
+use crate::prelude::SMeshError::VertexNotFound;
+use crate::q;
 use crate::smesh::*;
 
 ///
@@ -62,6 +64,97 @@ impl SMesh {
             self.face_mut(fo).halfedge = Some(o1);
         }
         Ok(o1)
+    }
+
+    /// \return whether the mesh a triangle mesh. this function simply tests
+    /// each face, and therefore is not very efficient.
+    pub fn is_triangle_mesh(&self) -> bool {
+        for (id, _) in &self.connectivity.faces {
+            if self.q(id).valence() != 3 {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// \return whether the mesh a quad mesh. this function simply tests
+    /// each face, and therefore is not very efficient.
+    pub fn is_quad_mesh(&self) -> bool {
+        for (id, _) in &self.connectivity.faces {
+            if self.q(id).valence() != 4 {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// \return whether collapsing the halfedge \p v0v1 is topologically legal.
+    /// \attention This function is only valid for triangle meshes.
+    pub fn is_collapse_ok(&self, v0v1: HalfedgeId) -> SMeshResult<()> {
+        let v1v0 = self.q(v0v1).opposite().id()?;
+        let v0 = self.q(v1v0).dst_vert().id()?;
+        let v1 = self.q(v0v1).dst_vert().id()?;
+
+        // the edges v1-vl and vl-v0 must not be both boundary edges
+        let vl = if !self.q(v0v1).is_boundary() {
+            let h1 = self.q(v0v1).next();
+            let h2 = h1.next();
+            if h1.opposite().is_boundary() && h2.opposite().is_boundary() {
+                bail!(DefaultError);
+            }
+            h1.dst_vert().id().ok()
+        } else {
+            None
+        };
+
+        // the edges v0-vr and vr-v1 must not be both boundary edges
+        let vr = if !self.q(v1v0).is_boundary() {
+            let h1 = self.q(v1v0).next();
+            let h2 = h1.next();
+            if h1.opposite().is_boundary() && h2.opposite().is_boundary() {
+                bail!(DefaultError);
+            }
+            h1.dst_vert().id().ok()
+        } else {
+            None
+        };
+
+        if vl.is_none() && vr.is_none() {
+            bail!(DefaultError);
+        }
+
+        // edge between two boundary vertices should be a boundary edge
+        if self.q(v0).is_boundary()
+            && self.q(v1).is_boundary()
+            && !self.q(v0v1).is_boundary()
+            && !self.q(v1v0).is_boundary()
+        {
+            bail!(DefaultError);
+        }
+
+        // test intersection of the one-rings of v0 and v1
+        for vv in self.q(v0).vertices() {
+            if vv != v1
+                && vv != vl.unwrap()
+                && vv != vr.unwrap()
+                && self.q(vv).halfedge_to(v1).id().is_ok()
+            {
+                bail!(DefaultError);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Collapse the halfedge \p h by moving its start vertex into its target
+    /// vertex. For non-boundary halfedges this function removes one vertex, three
+    /// edges, and two faces. For boundary halfedges it removes one vertex, two
+    /// edges and one face.
+    /// \attention This function is only valid for triangle meshes.
+    /// \attention Halfedge collapses might lead to invalid faces. Call
+    /// is_collapse_ok(Halfedge) to be sure the collapse is legal.
+    fn collapse(he: HalfedgeId) -> SMeshResult<VertexId> {
+        todo!()
     }
 }
 
