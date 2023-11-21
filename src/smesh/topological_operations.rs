@@ -1,5 +1,3 @@
-use crate::prelude::SMeshError::VertexNotFound;
-use crate::q;
 use crate::smesh::*;
 
 ///
@@ -97,24 +95,24 @@ impl SMesh {
 
         // the edges v1-vl and vl-v0 must not be both boundary edges
         let vl = if !self.q(v0v1).is_boundary() {
-            let h1 = self.q(v0v1).next();
-            let h2 = h1.next();
-            if h1.opposite().is_boundary() && h2.opposite().is_boundary() {
+            let h1 = self.q(v0v1).next().id()?;
+            let h2 = self.q(h1).next().id()?;
+            if self.q(h1).opposite().is_boundary() && self.q(h2).opposite().is_boundary() {
                 bail!(DefaultError);
             }
-            h1.dst_vert().id().ok()
+            self.q(h1).dst_vert().id().ok()
         } else {
             None
         };
 
         // the edges v0-vr and vr-v1 must not be both boundary edges
         let vr = if !self.q(v1v0).is_boundary() {
-            let h1 = self.q(v1v0).next();
-            let h2 = h1.next();
-            if h1.opposite().is_boundary() && h2.opposite().is_boundary() {
+            let h1 = self.q(v1v0).next().id()?;
+            let h2 = self.q(h1).next().id()?;
+            if self.q(h1).opposite().is_boundary() && self.q(h2).opposite().is_boundary() {
                 bail!(DefaultError);
             }
-            h1.dst_vert().id().ok()
+            self.q(h1).dst_vert().id().ok()
         } else {
             None
         };

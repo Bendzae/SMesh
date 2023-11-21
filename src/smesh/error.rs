@@ -13,6 +13,7 @@ pub enum SMeshError {
     /// Topology
     TopologyError,
     /// Other
+    UnsupportedOperation,
     DefaultError,
 }
 
@@ -21,9 +22,9 @@ pub type SMeshResult<T> = Result<T, SMeshError>;
 #[macro_export]
 macro_rules! bail {
     ($error:ident) => {
-        return Err(SMeshError::$error);
+        return Err(SMeshError::$error)
     };
     ($error:ident, $value:expr) => {
-        return Err(SMeshError::$error($value));
+        return Err(SMeshError::$error($value))
     };
 }
