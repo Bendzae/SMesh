@@ -1,5 +1,5 @@
 use crate::bail;
-use crate::prelude::{SMesh, SMeshError, SMeshResult};
+use crate::prelude::{FaceIterators, SMesh, SMeshError, SMeshResult, VertexIterators};
 use crate::smesh::{Connectivity, FaceId, HalfedgeId, VertexId};
 use std::marker::PhantomData;
 
@@ -86,6 +86,7 @@ impl_mesh_query_for!(VertexId, Vertex);
 impl_mesh_query_for!(HalfedgeId, Halfedge);
 impl_mesh_query_for!(FaceId, Face);
 
+// TODO Doesnt work because of recursion, would be cool in the future
 #[macro_export]
 macro_rules! impl_id_extensions_for {
     ($type:ident, pub trait $trait_name:ident { $( fn $fn_name:ident($(&$self1:ident)? $($self2:ident)?  $(, $arg_name:ident : $arg_ty:ty )*) -> $ret:ty );*; }) => {
@@ -105,17 +106,14 @@ macro_rules! impl_id_extensions_for {
     };
 }
 
-impl_id_extensions_for!(
-    VertexId,
-    pub trait VertexOps {
-        fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId>;
-        fn is_boundary(&self, mesh: &SMesh) -> bool;
-        fn is_isolated(&self, mesh: &SMesh) -> bool;
-        fn valence(self, mesh: &SMesh) -> usize;
-        fn is_manifold(&self, mesh: &SMesh) -> bool;
-    }
-);
+pub trait VertexOps {
+    fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId>;
+    fn is_boundary(&self, mesh: &SMesh) -> bool;
+    fn is_isolated(&self, mesh: &SMesh) -> bool;
+    fn valence(self, mesh: &SMesh) -> usize;
+    fn is_manifold(&self, mesh: &SMesh) -> bool;
+}
 impl VertexOps for MeshQueryBuilder<VertexId> {
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Halfedge)
@@ -148,21 +146,45 @@ impl VertexOps for MeshQueryBuilder<VertexId> {
         n < 2
     }
 }
-impl_id_extensions_for!(
-    HalfedgeId,
-    pub trait HalfedgeOps {
-        fn vert(&self) -> MeshQueryBuilder<VertexId>;
-        fn opposite(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn next(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn prev(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn face(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
-        fn dst_vert(&self) -> MeshQueryBuilder<VertexId>;
-        fn is_boundary(&self, mesh: &SMesh) -> bool;
+
+impl VertexOps for VertexId {
+    fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().halfedge()
     }
-);
+
+    fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().halfedge_to(dst_vertex)
+    }
+
+    fn is_boundary(&self, mesh: &SMesh) -> bool {
+        self.q().is_boundary(mesh)
+    }
+
+    fn is_isolated(&self, mesh: &SMesh) -> bool {
+        self.q().is_isolated(mesh)
+    }
+
+    fn valence(self, mesh: &SMesh) -> usize {
+        self.q().valence(mesh)
+    }
+
+    fn is_manifold(&self, mesh: &SMesh) -> bool {
+        self.q().is_manifold(mesh)
+    }
+}
+
+pub trait HalfedgeOps {
+    fn vert(&self) -> MeshQueryBuilder<VertexId>;
+    fn opposite(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn next(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn prev(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn face(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
+    fn dst_vert(&self) -> MeshQueryBuilder<VertexId>;
+    fn is_boundary(&self, mesh: &SMesh) -> bool;
+}
 impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
     fn vert(&self) -> MeshQueryBuilder<VertexId> {
         self.push(QueryOp::Vertex)
@@ -195,13 +217,52 @@ impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
         self.face().run(mesh).is_err()
     }
 }
-impl_id_extensions_for!(
-    FaceId,
-    pub trait FaceOps {
-        fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
-        fn valence(self, mesh: &SMesh) -> usize;
+
+impl HalfedgeOps for HalfedgeId {
+    fn vert(&self) -> MeshQueryBuilder<VertexId> {
+        self.q().vert()
     }
-);
+
+    fn opposite(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().opposite()
+    }
+
+    fn next(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().next()
+    }
+
+    fn prev(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().prev()
+    }
+
+    fn face(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().face()
+    }
+
+    fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().ccw_rotated_neighbour()
+    }
+
+    fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().cw_rotated_neighbour()
+    }
+
+    fn src_vert(&self) -> MeshQueryBuilder<VertexId> {
+        self.q().src_vert()
+    }
+
+    fn dst_vert(&self) -> MeshQueryBuilder<VertexId> {
+        self.q().dst_vert()
+    }
+
+    fn is_boundary(&self, mesh: &SMesh) -> bool {
+        self.q().is_boundary(mesh)
+    }
+}
+pub trait FaceOps {
+    fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn valence(self, mesh: &SMesh) -> usize;
+}
 impl FaceOps for MeshQueryBuilder<FaceId> {
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Halfedge)
@@ -209,6 +270,16 @@ impl FaceOps for MeshQueryBuilder<FaceId> {
 
     fn valence(self, mesh: &SMesh) -> usize {
         self.vertices(mesh).count()
+    }
+}
+
+impl FaceOps for FaceId {
+    fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
+        self.q().halfedge()
+    }
+
+    fn valence(self, mesh: &SMesh) -> usize {
+        self.q().valence(mesh)
     }
 }
 

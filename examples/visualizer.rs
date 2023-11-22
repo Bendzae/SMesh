@@ -32,7 +32,7 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     // let v4 = mesh.add_vertex(vec3(1.0, 2.0, 0.0));
     // mesh.add_edge(v2, v4);
 
-    let test_he = v0.q().halfedge_to(v1).run(&mesh).unwrap();
+    let test_he = v0.halfedge_to(v1).run(&mesh).unwrap();
     commands.spawn((
         DebugRenderSMesh {
             mesh,
@@ -106,7 +106,7 @@ fn debug_draw_smesh(
     }
     // Halfedges
     for (he_id, he) in mesh.halfedges().iter() {
-        let he = he_id.q();
+        let he = he_id;
         let opposite = he.opposite().run(&mesh);
         let v_src = he.src_vert().run(&mesh);
         let v_dst = he.dst_vert().run(&mesh);
@@ -151,29 +151,29 @@ fn change_selection_inner(
         match d.selection {
             Selection::Vertex(id) => {
                 if input.just_pressed(KeyCode::N) {
-                    d.selection = Selection::Halfedge(id.q().halfedge().run(&d.mesh)?);
+                    d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);
                 }
             }
             Selection::Halfedge(id) => {
                 if input.just_pressed(KeyCode::N) {
-                    d.selection = Selection::Halfedge(id.q().next().run(&d.mesh)?);
+                    d.selection = Selection::Halfedge(id.next().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::P) {
-                    d.selection = Selection::Halfedge(id.q().prev().run(&d.mesh)?);
+                    d.selection = Selection::Halfedge(id.prev().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::O) {
-                    d.selection = Selection::Halfedge(id.q().opposite().run(&d.mesh)?);
+                    d.selection = Selection::Halfedge(id.opposite().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::R) {
-                    d.selection = Selection::Halfedge(id.q().cw_rotated_neighbour().run(&d.mesh)?);
+                    d.selection = Selection::Halfedge(id.cw_rotated_neighbour().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::V) {
-                    d.selection = Selection::Vertex(id.q().vert().run(&d.mesh)?);
+                    d.selection = Selection::Vertex(id.vert().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::S) {
                     let mesh = &mut d.mesh;
-                    let v0 = id.q().src_vert().run(mesh)?;
-                    let v1 = id.q().dst_vert().run(mesh)?;
+                    let v0 = id.src_vert().run(mesh)?;
+                    let v1 = id.dst_vert().run(mesh)?;
                     let pos = (mesh.positions[v0] + mesh.positions[v1]) / 2.0;
                     let v = mesh.add_vertex(pos);
                     let he = mesh.insert_vertex(id, v);

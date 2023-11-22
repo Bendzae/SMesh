@@ -108,9 +108,9 @@ impl MeshQuery<'_, FaceId> {
         }
     }
 
-    pub fn halfedges(&self) -> VertexAroundFaceIter {
+    pub fn halfedges(&self) -> HalfedgeAroundFaceIter {
         let start = self.halfedge().id().unwrap();
-        VertexAroundFaceIter {
+        HalfedgeAroundFaceIter {
             conn: self.conn,
             start,
             current: Some(start),
@@ -118,15 +118,18 @@ impl MeshQuery<'_, FaceId> {
     }
 }
 
-impl_id_extensions_for!(
-    VertexId,
-    pub trait VertexIterators {
-        fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter;
-        fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter;
-    }
-);
-impl MeshQueryBuilder<VertexId> {
-    pub fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter {
+pub trait VertexIterators {
+    fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter;
+    fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter;
+}
+
+pub trait FaceIterators {
+    fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter;
+    fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundFaceIter;
+}
+
+impl VertexIterators for MeshQueryBuilder<VertexId> {
+    fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter {
         let start = self.halfedge().run(mesh).unwrap();
         VertexAroundVertexIter {
             conn: &mesh.connectivity,
@@ -135,7 +138,7 @@ impl MeshQueryBuilder<VertexId> {
         }
     }
 
-    pub fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter {
+    fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter {
         let start = self.halfedge().run(mesh).unwrap();
         HalfedgeAroundVertexIter {
             conn: &mesh.connectivity,
@@ -145,15 +148,18 @@ impl MeshQueryBuilder<VertexId> {
     }
 }
 
-impl_id_extensions_for!(
-    FaceId,
-    pub trait FaceIterators {
-        fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter;
-        fn halfedges(self, mesh: &SMesh) -> VertexAroundFaceIter;
+impl VertexIterators for VertexId {
+    fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter {
+        self.q().vertices(mesh)
     }
-);
-impl MeshQueryBuilder<FaceId> {
-    pub fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter {
+
+    fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter {
+        self.q().halfedges(mesh)
+    }
+}
+
+impl FaceIterators for MeshQueryBuilder<FaceId> {
+    fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter {
         let start = self.halfedge().run(mesh).unwrap();
         VertexAroundFaceIter {
             conn: &mesh.connectivity,
@@ -162,13 +168,23 @@ impl MeshQueryBuilder<FaceId> {
         }
     }
 
-    pub fn halfedges(self, mesh: &SMesh) -> VertexAroundFaceIter {
+    fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundFaceIter {
         let start = self.halfedge().run(mesh).unwrap();
-        VertexAroundFaceIter {
+        HalfedgeAroundFaceIter {
             conn: &mesh.connectivity,
             start,
             current: Some(start),
         }
+    }
+}
+
+impl FaceIterators for FaceId {
+    fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter {
+        self.q().vertices(mesh)
+    }
+
+    fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundFaceIter {
+        self.q().halfedges(mesh)
     }
 }
 
