@@ -1,4 +1,5 @@
-use crate::smesh::query::MQuery;
+use crate::impl_id_extensions_for;
+use crate::smesh::query::*;
 use crate::smesh::*;
 
 pub struct HalfedgeAroundVertexIter<'a> {
@@ -117,7 +118,14 @@ impl MeshQuery<'_, FaceId> {
     }
 }
 
-impl MQuery<VertexId> {
+impl_id_extensions_for!(
+    VertexId,
+    pub trait VertexIterators {
+        fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter;
+        fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter;
+    }
+);
+impl MeshQueryBuilder<VertexId> {
     pub fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter {
         let start = self.halfedge().run(mesh).unwrap();
         VertexAroundVertexIter {
@@ -137,7 +145,14 @@ impl MQuery<VertexId> {
     }
 }
 
-impl MQuery<FaceId> {
+impl_id_extensions_for!(
+    FaceId,
+    pub trait FaceIterators {
+        fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter;
+        fn halfedges(self, mesh: &SMesh) -> VertexAroundFaceIter;
+    }
+);
+impl MeshQueryBuilder<FaceId> {
     pub fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter {
         let start = self.halfedge().run(mesh).unwrap();
         VertexAroundFaceIter {
@@ -159,7 +174,6 @@ impl MQuery<FaceId> {
 
 mod test {
     use super::*;
-    use crate::smesh::query::ToMQuery;
     use glam::vec3;
     use itertools::Itertools;
 

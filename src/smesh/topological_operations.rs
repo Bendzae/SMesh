@@ -159,6 +159,7 @@ impl SMesh {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::prelude::*;
     use glam::vec3;
 
     #[test]
@@ -169,16 +170,21 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
         let face = mesh.add_face(vec![v0, v1, v2, v3])?;
-        assert_eq!(mesh.q(face).valence(), 4);
+        assert_eq!(face.q().valence(mesh), 4);
 
-        let he = mesh.q(v0).halfedge_to(v1).id()?;
+        let he = v0.q().halfedge_to(v1).run(mesh)?;
         let v = mesh.add_vertex(vec3(0.0, -1.0, 0.0));
         let h_res = mesh.insert_vertex(he, v)?;
-        assert_eq!(mesh.q(face).valence(), 5);
-        assert_eq!(mesh.q(h_res).dst_vert().id()?, v);
-        assert_eq!(mesh.q(h_res).src_vert().id()?, v1);
-        assert_eq!(mesh.q(h_res).next().dst_vert().id()?, v0);
+        assert_eq!(face.q().valence(mesh), 5);
+        assert_eq!(h_res.q().dst_vert().run(mesh)?, v);
+        assert_eq!(h_res.q().src_vert().run(mesh)?, v1);
+        assert_eq!(h_res.q().next().dst_vert().run(mesh)?, v0);
 
         Ok(())
     }
+
+    // #[test]
+    // fn collapse() -> SMeshResult<()> {
+    //     bail!(DefaultError)
+    // }
 }

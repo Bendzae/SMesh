@@ -3,10 +3,6 @@ use crate::prelude::{SMesh, SMeshError, SMeshResult};
 use crate::smesh::{Connectivity, FaceId, HalfedgeId, VertexId};
 use std::marker::PhantomData;
 
-/// TODO: Different approach to mesh query where the q is only evaluated when calling run()
-/// Would solve some issues with borrowing and be more ergonomic:
-/// v: VertexId, self: &SMesh ->  v.halfedge().next().run(self)
-
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum QueryParam {
     Vertex(VertexId),
@@ -28,17 +24,17 @@ enum QueryOp {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct MQuery<T> {
+pub struct MeshQueryBuilder<T> {
     initial: QueryParam,
     history: Vec<QueryOp>,
     phantom_data: PhantomData<T>,
 }
 
-impl<T> MQuery<T> {
-    fn push<E>(&self, op: QueryOp) -> MQuery<E> {
+impl<T> MeshQueryBuilder<T> {
+    fn push<E>(&self, op: QueryOp) -> MeshQueryBuilder<E> {
         let mut history = self.history.clone();
         history.push(op);
-        MQuery {
+        MeshQueryBuilder {
             initial: self.initial,
             history,
             phantom_data: PhantomData,
@@ -59,18 +55,15 @@ impl<T> MQuery<T> {
     }
 }
 
-pub trait ToMQuery<T> {
-    fn q(&self) -> MQuery<T>;
+pub trait ToMeshQueryBuilder<T> {
+    fn q(&self) -> MeshQueryBuilder<T>;
 }
 
-pub fn q<T: ToMQuery<T>>(value: T) -> MQuery<T> {
-    value.q()
-}
-macro_rules! impl_mquery {
+macro_rules! impl_mesh_query_for {
     ($type:ident, $enum_variant:ident) => {
-        impl ToMQuery<$type> for $type {
-            fn q(&self) -> MQuery<$type> {
-                MQuery {
+        impl ToMeshQueryBuilder<$type> for $type {
+            fn q(&self) -> MeshQueryBuilder<$type> {
+                MeshQueryBuilder {
                     initial: QueryParam::$enum_variant(self.clone()),
                     history: vec![],
                     phantom_data: PhantomData,
@@ -78,7 +71,7 @@ macro_rules! impl_mquery {
             }
         }
 
-        impl MQuery<$type> {
+        impl MeshQueryBuilder<$type> {
             pub fn run(self, mesh: &SMesh) -> SMeshResult<$type> {
                 match self.evaluate_operations(mesh)? {
                     QueryParam::$enum_variant(id) => Ok(id),
@@ -89,34 +82,64 @@ macro_rules! impl_mquery {
     };
 }
 
-impl_mquery!(VertexId, Vertex);
-impl_mquery!(HalfedgeId, Halfedge);
-impl_mquery!(FaceId, Face);
+impl_mesh_query_for!(VertexId, Vertex);
+impl_mesh_query_for!(HalfedgeId, Halfedge);
+impl_mesh_query_for!(FaceId, Face);
 
-impl MQuery<VertexId> {
-    pub fn halfedge(&self) -> MQuery<HalfedgeId> {
+#[macro_export]
+macro_rules! impl_id_extensions_for {
+    ($type:ident, pub trait $trait_name:ident { $( fn $fn_name:ident($(&$self1:ident)? $($self2:ident)?  $(, $arg_name:ident : $arg_ty:ty )*) -> $ret:ty );*; }) => {
+        pub trait $trait_name {
+            $(
+                fn $fn_name($(&$self1)?$($self2)?$(, $arg_name: $arg_ty, )*) -> $ret;
+            )*
+        }
+
+        impl $trait_name for $type {
+            $(
+                fn $fn_name($(&$self1)?$($self2)?$(, $arg_name: $arg_ty, )*) -> $ret {
+                    $($self1)?$($self2)?.$fn_name($($arg_name)*)
+                }
+            )*
+        }
+    };
+}
+
+impl_id_extensions_for!(
+    VertexId,
+    pub trait VertexOps {
+        fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId>;
+        fn is_boundary(&self, mesh: &SMesh) -> bool;
+        fn is_isolated(&self, mesh: &SMesh) -> bool;
+        fn valence(self, mesh: &SMesh) -> usize;
+        fn is_manifold(&self, mesh: &SMesh) -> bool;
+    }
+);
+impl VertexOps for MeshQueryBuilder<VertexId> {
+    fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Halfedge)
     }
 
-    pub fn halfedge_to(&self, dst_vertex: VertexId) -> MQuery<HalfedgeId> {
+    fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::HalfedgeTo(dst_vertex))
     }
 
-    pub fn is_boundary(&self, mesh: &SMesh) -> bool {
+    fn is_boundary(&self, mesh: &SMesh) -> bool {
         self.halfedge().face().run(mesh).is_err()
     }
 
-    pub fn is_isolated(&self, mesh: &SMesh) -> bool {
+    fn is_isolated(&self, mesh: &SMesh) -> bool {
         self.halfedge().run(mesh).is_err()
     }
 
-    pub fn valence(self, mesh: &SMesh) -> usize {
+    fn valence(self, mesh: &SMesh) -> usize {
         self.vertices(mesh).count()
     }
 
     // The vertex is non-manifold if more than one gap exists, i.e.
     // more than one outgoing boundary halfedge.
-    pub fn is_manifold(&self, mesh: &SMesh) -> bool {
+    fn is_manifold(&self, mesh: &SMesh) -> bool {
         let n = self
             .clone()
             .halfedges(mesh)
@@ -125,45 +148,66 @@ impl MQuery<VertexId> {
         n < 2
     }
 }
-impl MQuery<HalfedgeId> {
-    pub fn vert(&self) -> MQuery<VertexId> {
+impl_id_extensions_for!(
+    HalfedgeId,
+    pub trait HalfedgeOps {
+        fn vert(&self) -> MeshQueryBuilder<VertexId>;
+        fn opposite(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn next(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn prev(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn face(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
+        fn dst_vert(&self) -> MeshQueryBuilder<VertexId>;
+        fn is_boundary(&self, mesh: &SMesh) -> bool;
+    }
+);
+impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
+    fn vert(&self) -> MeshQueryBuilder<VertexId> {
         self.push(QueryOp::Vertex)
     }
-    pub fn opposite(&self) -> MQuery<HalfedgeId> {
+    fn opposite(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Opposite)
     }
-    pub fn next(&self) -> MQuery<HalfedgeId> {
+    fn next(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Next)
     }
-    pub fn prev(&self) -> MQuery<HalfedgeId> {
+    fn prev(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Previous)
     }
-    pub fn face(&self) -> MQuery<HalfedgeId> {
+    fn face(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Face)
     }
-    pub fn ccw_rotated_neighbour(&self) -> MQuery<HalfedgeId> {
+    fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.prev().opposite()
     }
-    pub fn cw_rotated_neighbour(&self) -> MQuery<HalfedgeId> {
+    fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.opposite().next()
     }
-    pub fn src_vert(&self) -> MQuery<VertexId> {
+    fn src_vert(&self) -> MeshQueryBuilder<VertexId> {
         self.opposite().vert()
     }
-    pub fn dst_vert(&self) -> MQuery<VertexId> {
+    fn dst_vert(&self) -> MeshQueryBuilder<VertexId> {
         self.vert()
     }
-    pub fn is_boundary(&self, mesh: &SMesh) -> bool {
+    fn is_boundary(&self, mesh: &SMesh) -> bool {
         self.face().run(mesh).is_err()
     }
 }
-
-impl MQuery<FaceId> {
-    pub fn halfedge(&self) -> MQuery<HalfedgeId> {
+impl_id_extensions_for!(
+    FaceId,
+    pub trait FaceOps {
+        fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
+        fn valence(self, mesh: &SMesh) -> usize;
+    }
+);
+impl FaceOps for MeshQueryBuilder<FaceId> {
+    fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Halfedge)
     }
 
-    pub fn valence(self, mesh: &SMesh) -> usize {
+    fn valence(self, mesh: &SMesh) -> usize {
         self.vertices(mesh).count()
     }
 }
@@ -278,7 +322,7 @@ mod test {
 
         assert!(face_id.is_ok());
 
-        let he_0_to_1 = v0.q().halfedge_to(v1);
+        let he_0_to_1 = v0.halfedge_to(v1);
         assert_eq!(he_0_to_1.src_vert().run(mesh)?, v0);
         assert_eq!(he_0_to_1.dst_vert().run(mesh)?, v1);
 
