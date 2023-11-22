@@ -153,7 +153,7 @@ impl VertexOps for MeshQueryBuilder<VertexId> {
         let n = self
             .clone()
             .halfedges(mesh)
-            .filter(|he| (*he).q().is_boundary(mesh))
+            .filter(|he| (*he).is_boundary(mesh))
             .count();
         n < 2
     }
@@ -304,16 +304,16 @@ fn eval_vertex_op(c: &Connectivity, id: VertexId, op: QueryOp) -> SMeshResult<Qu
             QueryParam::Halfedge(v.halfedge.ok_or(SMeshError::VertexHasNoHalfEdge(id))?)
         }
         QueryOp::HalfedgeTo(dst_vertex) => {
-            let initial_he = id.q().halfedge().run(c)?;
+            let initial_he = id.halfedge().run(c)?;
             let mut he = initial_he;
 
             let r = loop {
-                match he.q().dst_vert().run(c) {
+                match he.dst_vert().run(c) {
                     Ok(id) => {
                         if id == dst_vertex {
                             break Ok(he);
                         }
-                        he = he.q().cw_rotated_neighbour().run(c)?;
+                        he = he.cw_rotated_neighbour().run(c)?;
                         if he == initial_he {
                             break Err(SMeshError::DefaultError);
                         }
@@ -378,7 +378,7 @@ mod test {
 
         assert!(face_id.is_ok());
 
-        let q = v0.q().halfedge();
+        let q = v0.halfedge();
 
         let h = q.opposite().run(mesh)?;
         let h1 = q.vert().run(mesh)?;
@@ -421,8 +421,8 @@ mod test {
 
         let face_id = mesh.add_face(vec![v0, v1, v2, v3])?;
 
-        assert_eq!(face_id.q().valence(mesh), 4);
-        assert_eq!(v0.q().valence(mesh), 2);
+        assert_eq!(face_id.valence(mesh), 4);
+        assert_eq!(v0.valence(mesh), 2);
 
         Ok(())
     }
@@ -438,8 +438,8 @@ mod test {
 
         mesh.add_face(vec![v0, v1, v2, v3])?;
 
-        assert!(v0.q().is_manifold(mesh));
-        assert!(v3.q().is_manifold(mesh));
+        assert!(v0.is_manifold(mesh));
+        assert!(v3.is_manifold(mesh));
 
         Ok(())
     }
