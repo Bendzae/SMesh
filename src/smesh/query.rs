@@ -41,12 +41,11 @@ impl<T> MeshQueryBuilder<T> {
         }
     }
 
-    fn evaluate_operations(&self, mesh: &SMesh) -> SMeshResult<QueryParam> {
-        let c = &mesh.connectivity;
+    fn evaluate_operations(&self, c: &Connectivity) -> SMeshResult<QueryParam> {
         let mut value = self.initial;
         for op in &self.history {
             value = match value {
-                QueryParam::Vertex(id) => eval_vertex_op(mesh, id, *op)?,
+                QueryParam::Vertex(id) => eval_vertex_op(c, id, *op)?,
                 QueryParam::Halfedge(id) => eval_halfedge_op(c, id, *op)?,
                 QueryParam::Face(id) => eval_face_op(c, id, *op)?,
             };
@@ -57,6 +56,10 @@ impl<T> MeshQueryBuilder<T> {
 
 pub trait ToMeshQueryBuilder<T> {
     fn q(&self) -> MeshQueryBuilder<T>;
+}
+
+pub trait RunQuery<T, E> {
+    fn run(self, on: &E) -> SMeshResult<T>;
 }
 
 macro_rules! impl_mesh_query_for {
@@ -71,9 +74,18 @@ macro_rules! impl_mesh_query_for {
             }
         }
 
-        impl MeshQueryBuilder<$type> {
-            pub fn run(self, mesh: &SMesh) -> SMeshResult<$type> {
-                match self.evaluate_operations(mesh)? {
+        impl RunQuery<$type, SMesh> for MeshQueryBuilder<$type> {
+            fn run(self, mesh: &SMesh) -> SMeshResult<$type> {
+                match self.evaluate_operations(&mesh.connectivity)? {
+                    QueryParam::$enum_variant(id) => Ok(id),
+                    _ => Err(SMeshError::DefaultError),
+                }
+            }
+        }
+
+        impl RunQuery<$type, Connectivity> for MeshQueryBuilder<$type> {
+            fn run(self, connectivity: &Connectivity) -> SMeshResult<$type> {
+                match self.evaluate_operations(connectivity)? {
                     QueryParam::$enum_variant(id) => Ok(id),
                     _ => Err(SMeshError::DefaultError),
                 }
@@ -178,7 +190,7 @@ pub trait HalfedgeOps {
     fn opposite(&self) -> MeshQueryBuilder<HalfedgeId>;
     fn next(&self) -> MeshQueryBuilder<HalfedgeId>;
     fn prev(&self) -> MeshQueryBuilder<HalfedgeId>;
-    fn face(&self) -> MeshQueryBuilder<HalfedgeId>;
+    fn face(&self) -> MeshQueryBuilder<FaceId>;
     fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
     fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
     fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
@@ -198,7 +210,7 @@ impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
     fn prev(&self) -> MeshQueryBuilder<HalfedgeId> {
         self.push(QueryOp::Previous)
     }
-    fn face(&self) -> MeshQueryBuilder<HalfedgeId> {
+    fn face(&self) -> MeshQueryBuilder<FaceId> {
         self.push(QueryOp::Face)
     }
     fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId> {
@@ -235,7 +247,7 @@ impl HalfedgeOps for HalfedgeId {
         self.q().prev()
     }
 
-    fn face(&self) -> MeshQueryBuilder<HalfedgeId> {
+    fn face(&self) -> MeshQueryBuilder<FaceId> {
         self.q().face()
     }
 
@@ -283,8 +295,7 @@ impl FaceOps for FaceId {
     }
 }
 
-fn eval_vertex_op(mesh: &SMesh, id: VertexId, op: QueryOp) -> SMeshResult<QueryParam> {
-    let c = &mesh.connectivity;
+fn eval_vertex_op(c: &Connectivity, id: VertexId, op: QueryOp) -> SMeshResult<QueryParam> {
     let Some(v) = c.vertices.get(id) else {
         bail!(VertexNotFound, id);
     };
@@ -293,16 +304,16 @@ fn eval_vertex_op(mesh: &SMesh, id: VertexId, op: QueryOp) -> SMeshResult<QueryP
             QueryParam::Halfedge(v.halfedge.ok_or(SMeshError::VertexHasNoHalfEdge(id))?)
         }
         QueryOp::HalfedgeTo(dst_vertex) => {
-            let initial_he = id.q().halfedge().run(mesh)?;
+            let initial_he = id.q().halfedge().run(c)?;
             let mut he = initial_he;
 
             let r = loop {
-                match he.q().dst_vert().run(mesh) {
+                match he.q().dst_vert().run(c) {
                     Ok(id) => {
                         if id == dst_vertex {
                             break Ok(he);
                         }
-                        he = he.q().cw_rotated_neighbour().run(mesh)?;
+                        he = he.q().cw_rotated_neighbour().run(c)?;
                         if he == initial_he {
                             break Err(SMeshError::DefaultError);
                         }
@@ -352,7 +363,6 @@ fn eval_face_op(c: &Connectivity, id: FaceId, op: QueryOp) -> SMeshResult<QueryP
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::prelude::EvalMeshQuery;
     use glam::vec3;
 
     #[test]
@@ -372,8 +382,8 @@ mod test {
 
         let h = q.opposite().run(mesh)?;
         let h1 = q.vert().run(mesh)?;
-        let h_old = mesh.q(v0).halfedge().opposite().id()?;
-        let h_1_old = mesh.q(v0).halfedge().vert().id()?;
+        let h_old = v0.halfedge().opposite().run(mesh)?;
+        let h_1_old = v0.halfedge().vert().run(mesh)?;
 
         assert_eq!(h, h_old);
         assert_eq!(h1, h_1_old);
@@ -428,21 +438,6 @@ mod test {
 
         mesh.add_face(vec![v0, v1, v2, v3])?;
 
-        let n = v0
-            .q()
-            .halfedges(mesh)
-            // .filter(|he| (*he).q().is_boundary(mesh))
-            .count();
-
-        println!("{}", n);
-
-        let n = mesh
-            .q(v0)
-            .halfedges()
-            // .filter(|he| (*he).q().is_boundary(mesh))
-            .count();
-
-        println!("{}", n);
         assert!(v0.q().is_manifold(mesh));
         assert!(v3.q().is_manifold(mesh));
 

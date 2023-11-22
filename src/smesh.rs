@@ -4,7 +4,7 @@ use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
 use crate::bail;
 use crate::smesh::error::*;
-use crate::smesh::mesh_query::*;
+use crate::smesh::query::*;
 
 pub mod attribute;
 pub mod error;
@@ -136,13 +136,13 @@ impl SMesh {
 
         // test for topological errors and create new edges
         for (v0, v1) in vertices.iter().circular_tuple_windows() {
-            if !self.q(*v0).is_boundary() {
+            if !(*v0).is_boundary(self) {
                 bail!(TopologyError);
             }
-            match self.q(*v0).halfedge_to(*v1).id() {
+            match (*v0).halfedge_to(*v1).run(self) {
                 Ok(he_id) => {
                     // Halfedge already exists
-                    if !self.q(he_id).is_boundary() {
+                    if !he_id.is_boundary(self) {
                         bail!(TopologyError);
                     }
                     halfedeges.push((he_id, false));
@@ -160,41 +160,39 @@ impl SMesh {
             halfedeges.iter().circular_tuple_windows()
         {
             if !prev_new && !next_new {
-                let inner_prev: MeshQuery<HalfedgeId> = self.q(*inner_prev_id);
-                let inner_next: MeshQuery<HalfedgeId> = self.q(*inner_next_id);
-                if inner_prev.next() != inner_next {
+                let inner_prev = *inner_prev_id;
+                let inner_next = *inner_next_id;
+                if inner_prev.next().run(self)? != inner_next {
                     // here comes the ugly part... we have to relink a whole patch
 
                     // search a free gap
                     // free gap will be between boundaryPrev and boundaryNext
                     let outer_prev = inner_next.opposite();
                     let outer_next = inner_prev.opposite();
-                    let mut boundary_prev = outer_prev.id()?;
+                    let mut boundary_prev = outer_prev.run(self)?;
                     loop {
-                        boundary_prev = self.q(boundary_prev).next().opposite().id()?;
-                        if !self.q(boundary_prev).is_boundary()
-                            || boundary_prev == inner_prev.id()?
-                        {
+                        boundary_prev = boundary_prev.next().opposite().run(self)?;
+                        if boundary_prev.is_boundary(self) || boundary_prev == inner_prev {
                             break;
                         }
                     }
-                    let boundary_next = self.q(boundary_prev).next().id()?;
+                    let boundary_next = boundary_prev.next().run(self)?;
 
-                    if !self.q(boundary_prev).is_boundary()
-                        || !self.q(boundary_next).is_boundary()
-                        || boundary_next == inner_next.id()?
+                    if !boundary_prev.is_boundary(self)
+                        || !boundary_next.is_boundary(self)
+                        || boundary_next == inner_next
                     {
                         bail!(TopologyError);
                     }
 
                     // other halfedges' ids
-                    let patch_start = inner_prev.next().id()?;
-                    let patch_end = inner_next.prev().id()?;
+                    let patch_start = inner_prev.next().run(self)?;
+                    let patch_end = inner_next.prev().run(self)?;
 
                     // save relink info
                     next_cache.push((boundary_prev, patch_start));
                     next_cache.push((patch_end, boundary_next));
-                    next_cache.push((inner_prev.id()?, inner_next.id()?));
+                    next_cache.push((inner_prev, inner_next));
                 }
             }
         }
@@ -211,23 +209,23 @@ impl SMesh {
             let (inner_next, next_new) = halfedeges[ii];
 
             if prev_new || next_new {
-                let outer_prev = self.q(inner_next).opposite().id()?;
-                let outer_next = self.q(inner_prev).opposite().id()?;
+                let outer_prev = inner_next.opposite().run(self)?;
+                let outer_next = inner_prev.opposite().run(self)?;
 
                 if prev_new && !next_new {
-                    let boundary_prev = self.q(inner_next).prev().id()?;
+                    let boundary_prev = inner_next.prev().run(self)?;
                     next_cache.push((boundary_prev, outer_next));
                     self.vert_mut(v).halfedge = Some(outer_next);
                 }
                 if !prev_new && next_new {
-                    let boundary_next = self.q(inner_prev).next().id()?;
+                    let boundary_next = inner_prev.next().run(self)?;
                     next_cache.push((outer_prev, boundary_next));
                     self.vert_mut(v).halfedge = Some(boundary_next);
                 }
                 if prev_new && next_new {
-                    match self.q(v).halfedge().id() {
+                    match v.halfedge().run(self) {
                         Ok(boundary_next) => {
-                            let boundary_prev = self.q(boundary_next).prev().id()?;
+                            let boundary_prev = boundary_next.prev().run(self)?;
                             next_cache.push((boundary_prev, outer_next));
                             next_cache.push((outer_prev, boundary_next));
                         }
@@ -239,7 +237,7 @@ impl SMesh {
                 }
                 // set inner link
                 next_cache.push((inner_prev, inner_next));
-            } else if self.q(v).halfedge().id()? == inner_next {
+            } else if v.halfedge().run(self)? == inner_next {
                 needs_adjust.push(v);
             }
 
@@ -261,15 +259,15 @@ impl SMesh {
     }
 
     pub(crate) fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
-        let initial_h = self.q(vertex_id).halfedge().id();
+        let initial_h = vertex_id.halfedge().run(self);
         let mut h = initial_h;
 
         loop {
-            if self.q(h?).is_boundary() {
+            if h?.is_boundary(self) {
                 self.vert_mut(vertex_id).halfedge = Some(h?);
                 break;
             }
-            h = self.q(h?).cw_rotated_neighbour().id();
+            h = h?.cw_rotated_neighbour().run(self);
             if h == initial_h {
                 break;
             }

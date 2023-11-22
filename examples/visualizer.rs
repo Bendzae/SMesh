@@ -107,9 +107,9 @@ fn debug_draw_smesh(
     // Halfedges
     for (he_id, he) in mesh.halfedges().iter() {
         let he = he_id;
-        let opposite = he.opposite().run(&mesh);
-        let v_src = he.src_vert().run(&mesh);
-        let v_dst = he.dst_vert().run(&mesh);
+        let opposite = he.opposite().run(mesh);
+        let v_src = he.src_vert().run(mesh);
+        let v_dst = he.dst_vert().run(mesh);
         let v_src_pos = t.transform_point(*mesh.positions.get(v_src?).unwrap());
         let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst?).unwrap());
         let color = if debug_smesh.selection == Selection::Halfedge(he_id) {

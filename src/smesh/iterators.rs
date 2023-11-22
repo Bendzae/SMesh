@@ -1,4 +1,3 @@
-use crate::impl_id_extensions_for;
 use crate::smesh::query::*;
 use crate::smesh::*;
 
@@ -14,7 +13,7 @@ impl<'a> Iterator for HalfedgeAroundVertexIter<'a> {
         let Some(current) = self.current else {
             return None;
         };
-        let next = self.conn.q(current).ccw_rotated_neighbour().id().unwrap();
+        let next = current.ccw_rotated_neighbour().run(self.conn).unwrap();
         self.current = if next == self.start { None } else { Some(next) };
         Some(current)
     }
@@ -32,8 +31,8 @@ impl<'a> Iterator for VertexAroundVertexIter<'a> {
         let Some(current) = self.current else {
             return None;
         };
-        let dst_vert = self.conn.q(current).dst_vert().id();
-        let next = self.conn.q(current).ccw_rotated_neighbour().id().unwrap();
+        let dst_vert = current.dst_vert().run(self.conn);
+        let next = current.ccw_rotated_neighbour().run(self.conn).unwrap();
         self.current = if next == self.start { None } else { Some(next) };
         dst_vert.ok()
     }
@@ -52,8 +51,8 @@ impl<'a> Iterator for VertexAroundFaceIter<'a> {
         let Some(current) = self.current else {
             return None;
         };
-        let dst_vert = self.conn.q(current).dst_vert().id();
-        let next = self.conn.q(current).next().id().unwrap();
+        let dst_vert = current.dst_vert().run(self.conn);
+        let next = current.next().run(self.conn).unwrap();
         self.current = if next == self.start { None } else { Some(next) };
         dst_vert.ok()
     }
@@ -72,49 +71,9 @@ impl<'a> Iterator for HalfedgeAroundFaceIter<'a> {
         let Some(current) = self.current else {
             return None;
         };
-        let next = self.conn.q(current).next().id().unwrap();
+        let next = current.next().run(self.conn).unwrap();
         self.current = if next == self.start { None } else { Some(next) };
         Some(current)
-    }
-}
-
-impl MeshQuery<'_, VertexId> {
-    pub fn vertices(&self) -> VertexAroundVertexIter {
-        let start = self.halfedge().id().unwrap();
-        VertexAroundVertexIter {
-            conn: self.conn,
-            start,
-            current: Some(start),
-        }
-    }
-
-    pub fn halfedges(&self) -> HalfedgeAroundVertexIter {
-        let start = self.halfedge().id().unwrap();
-        HalfedgeAroundVertexIter {
-            conn: self.conn,
-            start,
-            current: Some(start),
-        }
-    }
-}
-
-impl MeshQuery<'_, FaceId> {
-    pub fn vertices(&self) -> VertexAroundFaceIter {
-        let start = self.halfedge().id().unwrap();
-        VertexAroundFaceIter {
-            conn: self.conn,
-            start,
-            current: Some(start),
-        }
-    }
-
-    pub fn halfedges(&self) -> HalfedgeAroundFaceIter {
-        let start = self.halfedge().id().unwrap();
-        HalfedgeAroundFaceIter {
-            conn: self.conn,
-            start,
-            current: Some(start),
-        }
     }
 }
 
@@ -207,14 +166,14 @@ mod test {
         let _ = mesh.add_face(vec![v0, v4, v1]);
 
         let mut ids = vec![];
-        for v_id in mesh.q(v0).vertices() {
+        for v_id in v0.vertices(mesh) {
             println!("{:?}", v_id);
             ids.push(v_id);
         }
         assert_eq!(ids, vec![v3, v4, v1]);
 
         let mut ids = vec![];
-        for v_id in v0.q().vertices(mesh) {
+        for v_id in v0.vertices(mesh) {
             println!("{:?}", v_id);
             ids.push(v_id);
         }
@@ -234,9 +193,9 @@ mod test {
         let f0 = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
         let f1 = mesh.add_face(vec![v0, v4, v1]).unwrap();
 
-        let mut ids = mesh.q(f0).vertices().collect_vec();
+        let mut ids = f0.vertices(mesh).collect_vec();
         assert_eq!(ids, vec![v0, v1, v2, v3]);
-        ids = mesh.q(f1).vertices().collect_vec();
+        ids = f1.vertices(mesh).collect_vec();
         assert_eq!(ids, vec![v0, v4, v1,]);
     }
 }

@@ -1,3 +1,4 @@
+use crate::smesh::iterators::*;
 use crate::smesh::*;
 
 ///
@@ -23,12 +24,12 @@ impl SMesh {
     ///   <------ <-------
     ///     o0       o1
     pub fn insert_vertex(&mut self, h0: HalfedgeId, v: VertexId) -> SMeshResult<HalfedgeId> {
-        let h2 = self.q(h0).next().id().ok();
-        let o0 = self.q(h0).opposite().id()?;
-        let o2 = self.q(o0).prev().id().ok();
-        let v2 = self.q(h0).dst_vert().id()?;
-        let fh = self.q(h0).face().id().ok();
-        let fo = self.q(o0).face().id().ok();
+        let h2 = h0.next().run(self).ok();
+        let o0 = h0.opposite().run(self)?;
+        let o2 = o0.prev().run(self).ok();
+        let v2 = h0.dst_vert().run(self)?;
+        let fh = h0.face().run(self).ok();
+        let fo = o0.face().run(self).ok();
 
         let (h1, o1) = self.add_edge(v, v2);
 
@@ -68,7 +69,7 @@ impl SMesh {
     /// each face, and therefore is not very efficient.
     pub fn is_triangle_mesh(&self) -> bool {
         for (id, _) in &self.connectivity.faces {
-            if self.q(id).valence() != 3 {
+            if id.valence(self) != 3 {
                 return false;
             }
         }
@@ -79,7 +80,7 @@ impl SMesh {
     /// each face, and therefore is not very efficient.
     pub fn is_quad_mesh(&self) -> bool {
         for (id, _) in &self.connectivity.faces {
-            if self.q(id).valence() != 4 {
+            if id.valence(self) != 4 {
                 return false;
             }
         }
@@ -89,30 +90,30 @@ impl SMesh {
     /// \return whether collapsing the halfedge \p v0v1 is topologically legal.
     /// \attention This function is only valid for triangle meshes.
     pub fn is_collapse_ok(&self, v0v1: HalfedgeId) -> SMeshResult<()> {
-        let v1v0 = self.q(v0v1).opposite().id()?;
-        let v0 = self.q(v1v0).dst_vert().id()?;
-        let v1 = self.q(v0v1).dst_vert().id()?;
+        let v1v0 = v0v1.opposite().run(self)?;
+        let v0 = v1v0.dst_vert().run(self)?;
+        let v1 = v0v1.dst_vert().run(self)?;
 
         // the edges v1-vl and vl-v0 must not be both boundary edges
-        let vl = if !self.q(v0v1).is_boundary() {
-            let h1 = self.q(v0v1).next().id()?;
-            let h2 = self.q(h1).next().id()?;
-            if self.q(h1).opposite().is_boundary() && self.q(h2).opposite().is_boundary() {
+        let vl = if !v0v1.is_boundary(self) {
+            let h1 = v0v1.next().run(self)?;
+            let h2 = h1.next().run(self)?;
+            if h1.opposite().is_boundary(self) && h2.opposite().is_boundary(self) {
                 bail!(DefaultError);
             }
-            self.q(h1).dst_vert().id().ok()
+            h1.dst_vert().run(self).ok()
         } else {
             None
         };
 
         // the edges v0-vr and vr-v1 must not be both boundary edges
-        let vr = if !self.q(v1v0).is_boundary() {
-            let h1 = self.q(v1v0).next().id()?;
-            let h2 = self.q(h1).next().id()?;
-            if self.q(h1).opposite().is_boundary() && self.q(h2).opposite().is_boundary() {
+        let vr = if !v1v0.is_boundary(self) {
+            let h1 = v1v0.next().run(self)?;
+            let h2 = h1.next().run(self)?;
+            if h1.opposite().is_boundary(self) && h2.opposite().is_boundary(self) {
                 bail!(DefaultError);
             }
-            self.q(h1).dst_vert().id().ok()
+            h1.dst_vert().run(self).ok()
         } else {
             None
         };
@@ -122,20 +123,20 @@ impl SMesh {
         }
 
         // edge between two boundary vertices should be a boundary edge
-        if self.q(v0).is_boundary()
-            && self.q(v1).is_boundary()
-            && !self.q(v0v1).is_boundary()
-            && !self.q(v1v0).is_boundary()
+        if v0.is_boundary(self)
+            && v1.is_boundary(self)
+            && !v0v1.is_boundary(self)
+            && !v1v0.is_boundary(self)
         {
             bail!(DefaultError);
         }
 
         // test intersection of the one-rings of v0 and v1
-        for vv in self.q(v0).vertices() {
+        for vv in v0.vertices(self) {
             if vv != v1
                 && vv != vl.unwrap()
                 && vv != vr.unwrap()
-                && self.q(vv).halfedge_to(v1).id().is_ok()
+                && vv.halfedge_to(v1).run(self).is_ok()
             {
                 bail!(DefaultError);
             }
