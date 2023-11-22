@@ -51,6 +51,18 @@ pub struct Connectivity {
     pub faces: SlotMap<FaceId, Face>,
 }
 
+impl Connectivity {
+    pub fn vert_mut(&mut self, id: VertexId) -> &mut Vertex {
+        self.vertices.get_mut(id).unwrap()
+    }
+    pub fn he_mut(&mut self, id: HalfedgeId) -> &mut Halfedge {
+        self.halfedges.get_mut(id).unwrap()
+    }
+    pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
+        self.faces.get_mut(id).unwrap()
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct SMesh {
     pub connectivity: Connectivity,
@@ -95,6 +107,24 @@ impl SMesh {
     }
     pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
         self.faces_mut().get_mut(id).unwrap()
+    }
+    pub fn vert_mutator(&mut self, id: VertexId) -> MeshMutator<VertexId> {
+        MeshMutator {
+            conn: &mut self.connectivity,
+            value: id,
+        }
+    }
+    pub fn he_mutator(&mut self, id: HalfedgeId) -> MeshMutator<HalfedgeId> {
+        MeshMutator {
+            conn: &mut self.connectivity,
+            value: id,
+        }
+    }
+    pub fn face_mutator(&mut self, id: FaceId) -> MeshMutator<FaceId> {
+        MeshMutator {
+            conn: &mut self.connectivity,
+            value: id,
+        }
     }
 }
 
@@ -252,26 +282,86 @@ impl SMesh {
         }
 
         for v_id in needs_adjust {
-            self.adjust_outgoing_halfedge(v_id)?;
+            self.vert_mutator(v_id).adjust_outgoing_halfedge()?;
         }
 
         Ok(face_id)
     }
+}
 
-    pub(crate) fn adjust_outgoing_halfedge(&mut self, vertex_id: VertexId) -> SMeshResult<()> {
-        let initial_h = vertex_id.halfedge().run(self);
+pub struct MeshMutator<'a, T> {
+    conn: &'a mut Connectivity,
+    value: T,
+}
+
+/// Vertex mut ops
+impl MeshMutator<'_, VertexId> {
+    /// Set outgoing halfedge
+    pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) {
+        self.conn.vert_mut(self.value).halfedge = id;
+    }
+
+    /// Set outgoing halfedge to boundary edge if one exists
+    pub(crate) fn adjust_outgoing_halfedge(&mut self) -> SMeshResult<()> {
+        let initial_h = self.value.halfedge().run(self.conn)?;
         let mut h = initial_h;
 
         loop {
-            if h?.is_boundary(self) {
-                self.vert_mut(vertex_id).halfedge = Some(h?);
+            if h.is_boundary_c(self.conn) {
+                self.set_halfedge(Some(h));
                 break;
             }
-            h = h?.cw_rotated_neighbour().run(self);
+            h = h.cw_rotated_neighbour().run(self.conn)?;
             if h == initial_h {
                 break;
             }
         }
         Ok(())
+    }
+}
+
+/// Halfedge mut ops
+impl MeshMutator<'_, HalfedgeId> {
+    /// Set "next" id for this halfedge, and inversely the "prev" id for the next
+    pub fn set_next(&mut self, next: Option<HalfedgeId>) {
+        let he = self.value;
+        self.conn.he_mut(he).next = next;
+        if let Some(next) = next {
+            self.conn.he_mut(next).prev = Some(self.value);
+        }
+    }
+
+    /// Set "prev" id for this halfedge, and inversely the "next" id for the prev
+    pub fn set_prev(&mut self, prev: Option<HalfedgeId>) {
+        let he = self.value;
+        self.conn.he_mut(he).prev = prev;
+        if let Some(prev) = prev {
+            self.conn.he_mut(prev).next = Some(self.value);
+        }
+    }
+
+    /// Set "opposite" id for this halfedge, and this edge as "opposite" for the other
+    pub fn set_opposite(&mut self, opposite: HalfedgeId) {
+        let he = self.value;
+        self.conn.he_mut(he).opposite = Some(opposite);
+        self.conn.he_mut(opposite).opposite = Some(he);
+    }
+
+    /// Set the dst vertex id
+    pub fn set_vertex(&mut self, vertex: VertexId) {
+        self.conn.he_mut(self.value).vertex = vertex;
+    }
+
+    /// Set the face id
+    pub fn set_face(&mut self, face: Option<FaceId>) {
+        self.conn.he_mut(self.value).face = face;
+    }
+}
+
+/// Face mut ops
+impl MeshMutator<'_, FaceId> {
+    /// Set halfedge
+    pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) {
+        self.conn.face_mut(self.value).halfedge = id;
     }
 }

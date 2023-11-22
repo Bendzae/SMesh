@@ -196,6 +196,8 @@ pub trait HalfedgeOps {
     fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
     fn dst_vert(&self) -> MeshQueryBuilder<VertexId>;
     fn is_boundary(&self, mesh: &SMesh) -> bool;
+    // TODO: temp wortkaround
+    fn is_boundary_c(&self, connectivity: &Connectivity) -> bool;
 }
 impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
     fn vert(&self) -> MeshQueryBuilder<VertexId> {
@@ -227,6 +229,11 @@ impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
     }
     fn is_boundary(&self, mesh: &SMesh) -> bool {
         self.face().run(mesh).is_err()
+    }
+
+    // TODO: temp wortkaround
+    fn is_boundary_c(&self, connectivity: &Connectivity) -> bool {
+        self.face().run(connectivity).is_err()
     }
 }
 
@@ -269,6 +276,10 @@ impl HalfedgeOps for HalfedgeId {
 
     fn is_boundary(&self, mesh: &SMesh) -> bool {
         self.q().is_boundary(mesh)
+    }
+
+    fn is_boundary_c(&self, connectivity: &Connectivity) -> bool {
+        self.q().is_boundary_c(connectivity)
     }
 }
 pub trait FaceOps {
@@ -337,11 +348,11 @@ fn eval_halfedge_op(c: &Connectivity, id: HalfedgeId, op: QueryOp) -> SMeshResul
     let r = match op {
         QueryOp::Vertex => QueryParam::Vertex(h.vertex),
         QueryOp::Opposite => {
-            QueryParam::Halfedge(h.opposite.ok_or(SMeshError::HalfedgeHasNoRef(id))?)
+            QueryParam::Halfedge(h.opposite.ok_or(SMeshError::HalfedgeHasNoOpposite(id))?)
         }
-        QueryOp::Next => QueryParam::Halfedge(h.next.ok_or(SMeshError::HalfedgeHasNoRef(id))?),
-        QueryOp::Previous => QueryParam::Halfedge(h.prev.ok_or(SMeshError::HalfedgeHasNoRef(id))?),
-        QueryOp::Face => QueryParam::Face(h.face.ok_or(SMeshError::HalfedgeHasNoRef(id))?),
+        QueryOp::Next => QueryParam::Halfedge(h.next.ok_or(SMeshError::HalfedgeHasNoNext(id))?),
+        QueryOp::Previous => QueryParam::Halfedge(h.prev.ok_or(SMeshError::HalfedgeHasNoPrev(id))?),
+        QueryOp::Face => QueryParam::Face(h.face.ok_or(SMeshError::HalfedgeHasNoFace(id))?),
         _ => bail!(UnsupportedOperation),
     };
     Ok(r)

@@ -34,26 +34,28 @@ impl SMesh {
         let (h1, o1) = self.add_edge(v, v2);
 
         // adjust halfedge connectivity
-        let h1_mut = self.he_mut(h1);
-        h1_mut.next = h2;
-        h1_mut.vertex = v2;
-        h1_mut.face = fh;
-        let h0_mut = self.he_mut(h0);
-        h0_mut.next = Some(h1);
-        h0_mut.vertex = v;
+        let mut h1_mut = self.he_mutator(h1);
+        h1_mut.set_next(h2);
+        h1_mut.set_vertex(v2);
+        h1_mut.set_face(fh);
+        let mut h0_mut = self.he_mutator(h0);
+        h0_mut.set_next(Some(h1));
+        h0_mut.set_vertex(v);
 
-        let o1_mut = self.he_mut(o1);
-        o1_mut.next = Some(o0);
-        o1_mut.vertex = v;
-        o1_mut.face = fo;
+        let mut o1_mut = self.he_mutator(o1);
+        o1_mut.set_next(Some(o0));
+        o1_mut.set_vertex(v);
+        o1_mut.set_face(fo);
         if let Some(o2) = o2 {
-            self.he_mut(o2).next = Some(o1);
+            self.he_mutator(o2).set_next(Some(o1));
         }
         // adjust vertex connectivity
-        self.vert_mut(v2).halfedge = Some(o1);
-        self.adjust_outgoing_halfedge(v2)?;
-        self.vert_mut(v).halfedge = Some(h1);
-        self.adjust_outgoing_halfedge(v)?;
+        let mut v2_mut = self.vert_mutator(v2);
+        v2_mut.set_halfedge(Some(o1));
+        v2_mut.adjust_outgoing_halfedge()?;
+        let mut v_mut = self.vert_mutator(v);
+        v_mut.set_halfedge(Some(h1));
+        v_mut.adjust_outgoing_halfedge()?;
 
         // adjust face connectivity
         if let Some(fh) = fh {
@@ -176,11 +178,19 @@ mod test {
         let he = v0.halfedge_to(v1).run(mesh)?;
         let v = mesh.add_vertex(vec3(0.0, -1.0, 0.0));
         let h_res = mesh.insert_vertex(he, v)?;
+        assert_eq!(v1.halfedge_to(v).run(mesh)?, h_res);
         assert_eq!(face.valence(mesh), 5);
         assert_eq!(h_res.dst_vert().run(mesh)?, v);
         assert_eq!(h_res.src_vert().run(mesh)?, v1);
         assert_eq!(h_res.next().dst_vert().run(mesh)?, v0);
 
+        let v0_v = v0.halfedge_to(v).run(mesh)?;
+        let v_v1 = v.halfedge_to(v1).run(mesh)?;
+        assert_eq!(v0_v.next().run(mesh)?, v_v1);
+        assert_eq!(v_v1.prev().run(mesh)?, v0_v);
+
+        let he_next = h_res.next().next();
+        assert_eq!(he_next.prev().prev().run(mesh)?, h_res);
         Ok(())
     }
 
