@@ -10,8 +10,8 @@ pub mod attribute;
 pub mod error;
 pub mod iterators;
 pub mod mesh_query;
+pub mod query;
 pub mod topological_operations;
-mod query;
 
 new_key_type! { pub struct VertexId; }
 new_key_type! { pub struct HalfedgeId; }

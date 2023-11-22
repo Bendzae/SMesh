@@ -32,8 +32,7 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     // let v4 = mesh.add_vertex(vec3(1.0, 2.0, 0.0));
     // mesh.add_edge(v2, v4);
 
-    // let test_he = mesh.q(v0).halfedge().id().unwrap();
-    let test_he = mesh.q(v0).halfedge_to(v1).id().unwrap();
+    let test_he = v0.q().halfedge_to(v1).run(&mesh).unwrap();
     commands.spawn((
         DebugRenderSMesh {
             mesh,
@@ -83,40 +82,50 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     ));
 }
 
-fn debug_draw_smesh(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut gizmos: Gizmos) {
+fn debug_draw_smesh_system(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut gizmos: Gizmos) {
     for (debug_smesh, t) in &q_smesh {
-        let mesh = &debug_smesh.mesh;
-        // Verts
-        for (v_id, v) in mesh.vertices().iter() {
-            let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
-            let color = if debug_smesh.selection == Selection::Vertex(v_id) {
-                Color::ORANGE_RED
-            } else {
-                Color::GREEN
-            };
-            gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
-        }
-        // Halfedges
-        for (he_id, he) in mesh.halfedges().iter() {
-            let opposite = mesh.q(he_id).opposite().id().unwrap();
-            let v_src = mesh.q(he_id).src_vert().id().unwrap();
-            let v_dst = mesh.q(he_id).dst_vert().id().unwrap();
-            let v_src_pos = t.transform_point(*mesh.positions.get(v_src).unwrap());
-            let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst).unwrap());
-            let color = if debug_smesh.selection == Selection::Halfedge(he_id) {
-                Color::ORANGE_RED
-            } else {
-                Color::TURQUOISE
-            };
-            draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color);
-            let color = if debug_smesh.selection == Selection::Halfedge(opposite) {
-                Color::ORANGE_RED
-            } else {
-                Color::TURQUOISE
-            };
-            draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
-        }
+        debug_draw_smesh(debug_smesh, t, &mut gizmos)
+            .unwrap_or_else(|e| warn!("Error while drawing mesh: {:?}", e));
     }
+}
+fn debug_draw_smesh(
+    debug_smesh: &DebugRenderSMesh,
+    t: &Transform,
+    mut gizmos: &mut Gizmos,
+) -> SMeshResult<()> {
+    let mesh = &debug_smesh.mesh;
+    // Verts
+    for (v_id, v) in mesh.vertices().iter() {
+        let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
+        let color = if debug_smesh.selection == Selection::Vertex(v_id) {
+            Color::ORANGE_RED
+        } else {
+            Color::GREEN
+        };
+        gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
+    }
+    // Halfedges
+    for (he_id, he) in mesh.halfedges().iter() {
+        let he = he_id.q();
+        let opposite = he.opposite().run(&mesh);
+        let v_src = he.src_vert().run(&mesh);
+        let v_dst = he.dst_vert().run(&mesh);
+        let v_src_pos = t.transform_point(*mesh.positions.get(v_src?).unwrap());
+        let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst?).unwrap());
+        let color = if debug_smesh.selection == Selection::Halfedge(he_id) {
+            Color::ORANGE_RED
+        } else {
+            Color::TURQUOISE
+        };
+        draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color);
+        let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
+            Color::ORANGE_RED
+        } else {
+            Color::TURQUOISE
+        };
+        draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
+    }
+    Ok(())
 }
 
 fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
@@ -131,46 +140,46 @@ fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
 }
 
 fn change_selection_system(input: Res<Input<KeyCode>>, mut q_smesh: Query<&mut DebugRenderSMesh>) {
-    for mut debug_smesh in q_smesh.iter_mut() {
-        match debug_smesh.selection {
+    change_selection_inner(&input, &mut q_smesh)
+        .unwrap_or_else(|e| warn!("Error while trying to perform mesh operation: {:?}", e));
+}
+fn change_selection_inner(
+    input: &Res<Input<KeyCode>>,
+    q_smesh: &mut Query<&mut DebugRenderSMesh>,
+) -> SMeshResult<()> {
+    for mut d in q_smesh.iter_mut() {
+        match d.selection {
             Selection::Vertex(id) => {
                 if input.just_pressed(KeyCode::N) {
-                    debug_smesh.selection =
-                        Selection::Halfedge(debug_smesh.mesh.q(id).halfedge().id().unwrap());
+                    d.selection = Selection::Halfedge(id.q().halfedge().run(&d.mesh)?);
                 }
             }
             Selection::Halfedge(id) => {
                 if input.just_pressed(KeyCode::N) {
-                    debug_smesh.selection =
-                        Selection::Halfedge(debug_smesh.mesh.q(id).next().id().unwrap());
+                    d.selection = Selection::Halfedge(id.q().next().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::P) {
-                    debug_smesh.selection =
-                        Selection::Halfedge(debug_smesh.mesh.q(id).prev().id().unwrap());
+                    d.selection = Selection::Halfedge(id.q().prev().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::O) {
-                    debug_smesh.selection =
-                        Selection::Halfedge(debug_smesh.mesh.q(id).opposite().id().unwrap());
+                    d.selection = Selection::Halfedge(id.q().opposite().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::R) {
-                    debug_smesh.selection = Selection::Halfedge(
-                        debug_smesh.mesh.q(id).cw_rotated_neighbour().id().unwrap(),
-                    );
+                    d.selection = Selection::Halfedge(id.q().cw_rotated_neighbour().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::V) {
-                    debug_smesh.selection =
-                        Selection::Vertex(debug_smesh.mesh.q(id).vert().id().unwrap());
+                    d.selection = Selection::Vertex(id.q().vert().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::S) {
-                    let m = &mut debug_smesh.mesh;
-                    let v0 = m.q(id).src_vert().id().unwrap();
-                    let v1 = m.q(id).dst_vert().id().unwrap();
-                    let pos = (m.positions[v0] + m.positions[v1]) / 2.0;
-                    let v = debug_smesh.mesh.add_vertex(pos);
-                    let he = debug_smesh.mesh.insert_vertex(id, v);
+                    let mesh = &mut d.mesh;
+                    let v0 = id.q().src_vert().run(mesh)?;
+                    let v1 = id.q().dst_vert().run(mesh)?;
+                    let pos = (mesh.positions[v0] + mesh.positions[v1]) / 2.0;
+                    let v = mesh.add_vertex(pos);
+                    let he = mesh.insert_vertex(id, v);
                     match he {
                         Ok(he) => {
-                            debug_smesh.selection = Selection::Halfedge(he);
+                            d.selection = Selection::Halfedge(he);
                         }
                         Err(e) => {
                             error!("{:?}", e)
@@ -182,6 +191,7 @@ fn change_selection_system(input: Res<Input<KeyCode>>, mut q_smesh: Query<&mut D
             Selection::None => {}
         }
     }
+    Ok(())
 }
 
 fn selection_log_system(q_sel: Query<&DebugRenderSMesh, Changed<DebugRenderSMesh>>) {
@@ -207,7 +217,7 @@ fn main() {
         .add_systems(
             Update,
             (
-                debug_draw_smesh,
+                debug_draw_smesh_system,
                 change_selection_system,
                 selection_log_system,
             ),

@@ -1,4 +1,6 @@
+use crate::smesh::query::MQuery;
 use crate::smesh::*;
+
 pub struct HalfedgeAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -115,8 +117,49 @@ impl MeshQuery<'_, FaceId> {
     }
 }
 
+impl MQuery<VertexId> {
+    pub fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter {
+        let start = self.halfedge().run(mesh).unwrap();
+        VertexAroundVertexIter {
+            conn: &mesh.connectivity,
+            start,
+            current: Some(start),
+        }
+    }
+
+    pub fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter {
+        let start = self.halfedge().run(mesh).unwrap();
+        HalfedgeAroundVertexIter {
+            conn: &mesh.connectivity,
+            start,
+            current: Some(start),
+        }
+    }
+}
+
+impl MQuery<FaceId> {
+    pub fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter {
+        let start = self.halfedge().run(mesh).unwrap();
+        VertexAroundFaceIter {
+            conn: &mesh.connectivity,
+            start,
+            current: Some(start),
+        }
+    }
+
+    pub fn halfedges(self, mesh: &SMesh) -> VertexAroundFaceIter {
+        let start = self.halfedge().run(mesh).unwrap();
+        VertexAroundFaceIter {
+            conn: &mesh.connectivity,
+            start,
+            current: Some(start),
+        }
+    }
+}
+
 mod test {
     use super::*;
+    use crate::smesh::query::ToMQuery;
     use glam::vec3;
     use itertools::Itertools;
 
@@ -135,6 +178,13 @@ mod test {
 
         let mut ids = vec![];
         for v_id in mesh.q(v0).vertices() {
+            println!("{:?}", v_id);
+            ids.push(v_id);
+        }
+        assert_eq!(ids, vec![v3, v4, v1]);
+
+        let mut ids = vec![];
+        for v_id in v0.q().vertices(mesh) {
             println!("{:?}", v_id);
             ids.push(v_id);
         }
