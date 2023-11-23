@@ -247,11 +247,11 @@ impl SMesh {
         self.remove_edge_helper(h)?;
 
         // remove loops
-        if h1.next().next().run(self)? == h1 {
+        if h1.next().next().run(self) == Ok(h1) {
             self.remove_loop_helper(h1)?;
         }
 
-        if o1.next().next().run(self)? == o1 {
+        if o1.next().next().run(self) == Ok(o1) {
             self.remove_loop_helper(o1)?;
         }
         Ok(())
