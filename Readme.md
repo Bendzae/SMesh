@@ -19,9 +19,10 @@ Coming soon...
 I aim to provide a flexible rust implementation of the Surface Mesh with a focus
 on usefulness for procedural mesh generation. Other goals are:
 
-- Ergonomic and easy-to-use api
-- Support most operations that are possible in modern 3D modeling software like blender
-- Integration with the bevy game engine
+- [ ] Ergonomic and easy-to-use api
+- [ ] Port all operations from the pmp library
+- [ ] Support most operations that are possible in modern 3D modeling software like blender
+- [ ] Integration with the bevy game engine
 
 ### Non-Goals
 
