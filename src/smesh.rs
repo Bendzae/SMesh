@@ -1,6 +1,7 @@
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
+use std::fmt::Display;
 
 use crate::bail;
 use crate::smesh::error::*;
@@ -15,7 +16,6 @@ pub mod topological_operations;
 
 new_key_type! { pub struct VertexId; }
 new_key_type! { pub struct HalfedgeId; }
-new_key_type! { pub struct EdgeId; }
 new_key_type! { pub struct FaceId; }
 
 #[derive(Debug, Default, Clone)]
@@ -26,7 +26,6 @@ pub struct Vertex {
 #[derive(Debug, Default, Clone)]
 pub struct Halfedge {
     pub vertex: VertexId,
-    pub edge: Option<EdgeId>,
     pub face: Option<FaceId>,
     pub opposite: Option<HalfedgeId>,
     pub prev: Option<HalfedgeId>,
@@ -47,7 +46,6 @@ pub struct Face {
 pub struct Connectivity {
     pub vertices: SlotMap<VertexId, Vertex>,
     pub halfedges: SlotMap<HalfedgeId, Halfedge>,
-    pub edges: SlotMap<EdgeId, EdgeId>,
     pub faces: SlotMap<FaceId, Face>,
 }
 

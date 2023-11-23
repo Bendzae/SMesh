@@ -9,7 +9,7 @@ edition = "2021"
 glam = "0.24.2"
 slotmap = "1.0.6"
 itertools = "0.12.0"
-log = "0.4.20"
+thiserror = "1.0.50"
 
 [dev-dependencies]
 bevy = "0.12.0"

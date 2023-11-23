@@ -94,6 +94,7 @@ fn debug_draw_smesh(
     mut gizmos: &mut Gizmos,
 ) -> SMeshResult<()> {
     let mesh = &debug_smesh.mesh;
+
     // Verts
     for (v_id, v) in mesh.vertices().iter() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
