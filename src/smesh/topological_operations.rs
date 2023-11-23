@@ -5,6 +5,28 @@ use crate::smesh::*;
 /// Higher-level Topological Operations
 ///
 impl SMesh {
+    /// \return whether the mesh a triangle mesh. this function simply tests
+    /// each face, and therefore is not very efficient.
+    pub fn is_triangle_mesh(&self) -> bool {
+        for (id, _) in &self.connectivity.faces {
+            if id.valence(self) != 3 {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// \return whether the mesh a quad mesh. this function simply tests
+    /// each face, and therefore is not very efficient.
+    pub fn is_quad_mesh(&self) -> bool {
+        for (id, _) in &self.connectivity.faces {
+            if id.valence(self) != 4 {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Subdivide the edge \p e = (v0,v1) by splitting it into the two edge
     /// (v0,p) and (p,v1). Note that this function does not introduce any
     /// other edge or faces. It simply splits the edge. Returns halfedge that
@@ -34,27 +56,27 @@ impl SMesh {
         let (h1, o1) = self.add_edge(v, v2);
 
         // adjust halfedge connectivity
-        let mut h1_mut = self.he_mutator(h1);
-        h1_mut.set_next(h2);
-        h1_mut.set_vertex(v2);
-        h1_mut.set_face(fh);
-        let mut h0_mut = self.he_mutator(h0);
-        h0_mut.set_next(Some(h1));
-        h0_mut.set_vertex(v);
+        let mut h1_mut = self.get_mut(h1);
+        h1_mut.set_next(h2)?;
+        h1_mut.set_vertex(v2)?;
+        h1_mut.set_face(fh)?;
+        let mut h0_mut = self.get_mut(h0);
+        h0_mut.set_next(Some(h1))?;
+        h0_mut.set_vertex(v)?;
 
-        let mut o1_mut = self.he_mutator(o1);
-        o1_mut.set_next(Some(o0));
-        o1_mut.set_vertex(v);
-        o1_mut.set_face(fo);
+        let mut o1_mut = self.get_mut(o1);
+        o1_mut.set_next(Some(o0))?;
+        o1_mut.set_vertex(v)?;
+        o1_mut.set_face(fo)?;
         if let Some(o2) = o2 {
-            self.he_mutator(o2).set_next(Some(o1));
+            self.get_mut(o2).set_next(Some(o1))?;
         }
         // adjust vertex connectivity
-        let mut v2_mut = self.vert_mutator(v2);
-        v2_mut.set_halfedge(Some(o1));
+        let mut v2_mut = self.get_mut(v2);
+        v2_mut.set_halfedge(Some(o1))?;
         v2_mut.adjust_outgoing_halfedge()?;
-        let mut v_mut = self.vert_mutator(v);
-        v_mut.set_halfedge(Some(h1));
+        let mut v_mut = self.get_mut(v);
+        v_mut.set_halfedge(Some(h1))?;
         v_mut.adjust_outgoing_halfedge()?;
 
         // adjust face connectivity
@@ -67,26 +89,78 @@ impl SMesh {
         Ok(o1)
     }
 
-    /// \return whether the mesh a triangle mesh. this function simply tests
-    /// each face, and therefore is not very efficient.
-    pub fn is_triangle_mesh(&self) -> bool {
-        for (id, _) in &self.connectivity.faces {
-            if id.valence(self) != 3 {
-                return false;
-            }
+    pub fn delete_vertex(&mut self, v: VertexId) -> SMeshResult<()> {
+        let incident_faces = v.faces(self).collect_vec();
+        for f in incident_faces {
+            self.delete_face(f)?;
         }
-        true
+        let _ = self.get_mut(v).delete();
+        Ok(())
     }
 
-    /// \return whether the mesh a quad mesh. this function simply tests
-    /// each face, and therefore is not very efficient.
-    pub fn is_quad_mesh(&self) -> bool {
-        for (id, _) in &self.connectivity.faces {
-            if id.valence(self) != 4 {
-                return false;
+    pub fn delete_edge(&mut self, h: HalfedgeId) -> SMeshResult<()> {
+        todo!()
+    }
+
+    pub fn delete_face(&mut self, f: FaceId) -> SMeshResult<()> {
+        let mut delete_edges = vec![];
+        let mut adjust_edges = vec![];
+        let mut delete_verts = vec![];
+        // collect mesh elements to change
+        for hc in f.halfedges(self) {
+            adjust_edges.push(hc);
+            if hc.opposite().is_boundary(self) {
+                delete_edges.push(hc);
+            }
+            delete_verts.push(hc.dst_vert().run(self)?)
+        }
+        // remove face id from he's
+        for he in adjust_edges {
+            self.get_mut(he).set_face(None)?;
+        }
+        // delete all collected (half)edges
+        // delete isolated vertices
+        for h0 in delete_edges {
+            let v0 = h0.dst_vert().run(self)?;
+            let next0 = h0.next().run(self)?;
+            let prev0 = h0.prev().run(self)?;
+
+            let h1 = h0.opposite().run(self)?;
+            let v1 = h1.dst_vert().run(self)?;
+            let next1 = h1.next().run(self)?;
+            let prev1 = h1.prev().run(self)?;
+
+            // adjust next and prev handles
+            self.get_mut(prev0).set_next(Some(next1))?;
+            self.get_mut(prev1).set_next(Some(next0))?;
+
+            // delete edge
+            self.get_mut(h0).delete()?;
+
+            // update v0
+            if v0.halfedge().run(self)? == h1 {
+                if next0 == h1 {
+                    self.get_mut(v0).delete()?;
+                } else {
+                    self.get_mut(v0).set_halfedge(Some(next0))?;
+                }
+            }
+
+            // update v1
+            if v1.halfedge().run(self)? == h0 {
+                if next1 == h0 {
+                    self.get_mut(v1).delete()?;
+                } else {
+                    self.get_mut(v1).set_halfedge(Some(next1))?;
+                }
             }
         }
-        true
+
+        // update outgoing halfedge handles of remaining vertices
+        for v in delete_verts {
+            self.get_mut(v).adjust_outgoing_halfedge()?;
+        }
+        Ok(())
     }
 
     /// \return whether collapsing the halfedge \p v0v1 is topologically legal.
@@ -154,8 +228,122 @@ impl SMesh {
     /// \attention This function is only valid for triangle meshes.
     /// \attention Halfedge collapses might lead to invalid faces. Call
     /// is_collapse_ok(Halfedge) to be sure the collapse is legal.
-    fn collapse(he: HalfedgeId) -> SMeshResult<VertexId> {
-        todo!()
+    pub fn collapse(&mut self, h: HalfedgeId) -> SMeshResult<()> {
+        let h0 = h;
+        let h1 = h0.prev().run(self)?;
+        let o0 = h0.opposite();
+        let o1 = o0.next().run(self)?;
+        // remove edge
+        self.remove_edge_helper(h)?;
+
+        // remove loops
+        if h1.next().next().run(self)? == h1 {
+            self.remove_loop_helper(h1)?;
+        }
+
+        if o1.next().next().run(self)? == o1 {
+            self.remove_loop_helper(o1)?;
+        }
+        Ok(())
+    }
+
+    fn remove_edge_helper(&mut self, h: HalfedgeId) -> SMeshResult<()> {
+        let hn = h.next().run(self)?;
+        let hp = h.prev().run(self)?;
+
+        let o = h.opposite();
+        let on = o.next().run(self)?;
+        let op = o.prev().run(self)?;
+
+        let fh = h.face().run(self).ok();
+        let fo = o.face().run(self).ok();
+
+        let vh = h.dst_vert().run(self)?;
+        let vo = o.dst_vert().run(self)?;
+
+        // halfedge -> vertex
+        let he_to_update = vo
+            .halfedges(self)
+            .filter_map(|hc| hc.opposite().run(self).ok())
+            .collect_vec();
+
+        for hc_o in he_to_update {
+            self.get_mut(hc_o).set_vertex(vh)?;
+        }
+
+        // halfedge -> halfedge
+        self.get_mut(hp).set_next(Some(hn))?;
+        self.get_mut(op).set_next(Some(on))?;
+
+        // face -> halfedge
+        if let Some(fh) = fh {
+            self.get_mut(fh).set_halfedge(Some(hn))?;
+        }
+        if let Some(fo) = fo {
+            self.get_mut(fo).set_halfedge(Some(on))?;
+        }
+
+        // vertex -> halfedge
+        if vh.halfedge().run(self)? == o.run(self)? {
+            self.get_mut(vh).set_halfedge(Some(hn))?;
+        }
+        self.get_mut(vh).adjust_outgoing_halfedge()?;
+        self.get_mut(vo).set_halfedge(None)?;
+
+        // Delete
+        self.get_mut(vo).delete()?;
+        self.get_mut(h).delete()?;
+
+        Ok(())
+    }
+
+    fn remove_loop_helper(&mut self, h: HalfedgeId) -> SMeshResult<()> {
+        let h0 = h;
+        let h1 = h0.next().run(self)?;
+
+        let o0 = h0.opposite().run(self)?;
+        let o1 = h1.opposite().run(self)?;
+
+        let v0 = h0.dst_vert().run(self)?;
+        let v1 = h1.dst_vert().run(self)?;
+
+        let fh = h0.face().run(self).ok();
+        let fo = o0.face().run(self).ok();
+
+        // is it a loop ?
+        if !((h1.next().run(self)? == h0) && (h1 != o0)) {
+            bail!(TopologyError)
+        }
+
+        // halfedge -> halfedge
+        let o0_next = o0.next().run(self).ok();
+        self.get_mut(h1).set_next(o0_next)?;
+        let o0_prev = o0.prev().run(self)?;
+        self.get_mut(o0_prev).set_next(Some(h1))?;
+
+        // halfedge -> face
+        self.get_mut(h1).set_face(fo)?;
+
+        // vertex -> halfedge
+        self.get_mut(v0).set_halfedge(Some(h1))?;
+        self.get_mut(v0).adjust_outgoing_halfedge()?;
+        self.get_mut(v1).set_halfedge(Some(o1))?;
+        self.get_mut(v1).adjust_outgoing_halfedge()?;
+
+        // face -> halfedge
+        if let Some(fo) = fo {
+            if fo.halfedge().run(self)? == o0 {
+                self.get_mut(fo).set_halfedge(Some(h1))?;
+            }
+        }
+
+        // Delete stuff
+        if let Some(fh) = fh {
+            self.get_mut(fh).delete()?;
+        }
+        self.get_mut(h).delete()?;
+
+        Ok(())
     }
 }
 

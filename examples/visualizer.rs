@@ -94,7 +94,14 @@ fn debug_draw_smesh(
     mut gizmos: &mut Gizmos,
 ) -> SMeshResult<()> {
     let mesh = &debug_smesh.mesh;
-
+    gizmos.linestrip(
+        vec![
+            vec3(0.0, 0.0, 0.0),
+            vec3(1.0, 1.0, 0.0),
+            vec3(2.0, 0.0, 0.0),
+        ],
+        Color::PINK,
+    );
     // Verts
     for (v_id, v) in mesh.vertices().iter() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());

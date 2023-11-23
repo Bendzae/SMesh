@@ -13,8 +13,8 @@ impl<'a> Iterator for HalfedgeAroundVertexIter<'a> {
         let Some(current) = self.current else {
             return None;
         };
-        let next = current.ccw_rotated_neighbour().run(self.conn).unwrap();
-        self.current = if next == self.start { None } else { Some(next) };
+        let next = current.ccw_rotated_neighbour().run(self.conn).ok();
+        self.current = if next == Some(self.start) { None } else { next };
         Some(current)
     }
 }
@@ -32,9 +32,28 @@ impl<'a> Iterator for VertexAroundVertexIter<'a> {
             return None;
         };
         let dst_vert = current.dst_vert().run(self.conn);
-        let next = current.ccw_rotated_neighbour().run(self.conn).unwrap();
-        self.current = if next == self.start { None } else { Some(next) };
+        let next = current.ccw_rotated_neighbour().run(self.conn).ok();
+        self.current = if next == Some(self.start) { None } else { next };
         dst_vert.ok()
+    }
+}
+
+pub struct FaceAroundVertexIter<'a> {
+    conn: &'a Connectivity,
+    start: HalfedgeId,
+    current: Option<HalfedgeId>,
+}
+impl<'a> Iterator for FaceAroundVertexIter<'a> {
+    type Item = FaceId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Some(current) = self.current else {
+            return None;
+        };
+        let face = current.face().run(self.conn);
+        let next = current.ccw_rotated_neighbour().run(self.conn).ok();
+        self.current = if next == Some(self.start) { None } else { next };
+        face.ok()
     }
 }
 
@@ -52,8 +71,8 @@ impl<'a> Iterator for VertexAroundFaceIter<'a> {
             return None;
         };
         let dst_vert = current.dst_vert().run(self.conn);
-        let next = current.next().run(self.conn).unwrap();
-        self.current = if next == self.start { None } else { Some(next) };
+        let next = current.next().run(self.conn).ok();
+        self.current = if next == Some(self.start) { None } else { next };
         dst_vert.ok()
     }
 }
@@ -71,8 +90,8 @@ impl<'a> Iterator for HalfedgeAroundFaceIter<'a> {
         let Some(current) = self.current else {
             return None;
         };
-        let next = current.next().run(self.conn).unwrap();
-        self.current = if next == self.start { None } else { Some(next) };
+        let next = current.next().run(self.conn).ok();
+        self.current = if next == Some(self.start) { None } else { next };
         Some(current)
     }
 }
@@ -80,6 +99,7 @@ impl<'a> Iterator for HalfedgeAroundFaceIter<'a> {
 pub trait VertexIterators {
     fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter;
     fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter;
+    fn faces(self, mesh: &SMesh) -> FaceAroundVertexIter;
 }
 
 pub trait FaceIterators {
@@ -105,6 +125,15 @@ impl VertexIterators for MeshQueryBuilder<VertexId> {
             current: Some(start),
         }
     }
+
+    fn faces(self, mesh: &SMesh) -> FaceAroundVertexIter {
+        let start = self.halfedge().run(mesh).unwrap();
+        FaceAroundVertexIter {
+            conn: &mesh.connectivity,
+            start,
+            current: Some(start),
+        }
+    }
 }
 
 impl VertexIterators for VertexId {
@@ -114,6 +143,10 @@ impl VertexIterators for VertexId {
 
     fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter {
         self.q().halfedges(mesh)
+    }
+
+    fn faces(self, mesh: &SMesh) -> FaceAroundVertexIter {
+        self.q().faces(mesh)
     }
 }
 

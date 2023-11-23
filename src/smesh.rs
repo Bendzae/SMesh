@@ -1,9 +1,9 @@
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
-use std::fmt::Display;
 
 use crate::bail;
+use crate::prelude::SMeshError::FaceNotFound;
 use crate::smesh::error::*;
 use crate::smesh::query::*;
 
@@ -50,14 +50,18 @@ pub struct Connectivity {
 }
 
 impl Connectivity {
-    pub fn vert_mut(&mut self, id: VertexId) -> &mut Vertex {
-        self.vertices.get_mut(id).unwrap()
+    pub fn vert_mut(&mut self, id: VertexId) -> Result<&mut Vertex, SMeshError> {
+        self.vertices
+            .get_mut(id)
+            .ok_or(SMeshError::VertexNotFound(id))
     }
-    pub fn he_mut(&mut self, id: HalfedgeId) -> &mut Halfedge {
-        self.halfedges.get_mut(id).unwrap()
+    pub fn he_mut(&mut self, id: HalfedgeId) -> Result<&mut Halfedge, SMeshError> {
+        self.halfedges
+            .get_mut(id)
+            .ok_or(SMeshError::HalfedgeNotFound(id))
     }
-    pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
-        self.faces.get_mut(id).unwrap()
+    pub fn face_mut(&mut self, id: FaceId) -> Result<&mut Face, SMeshError> {
+        self.faces.get_mut(id).ok_or(FaceNotFound(id))
     }
 }
 
@@ -106,19 +110,7 @@ impl SMesh {
     pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
         self.faces_mut().get_mut(id).unwrap()
     }
-    pub fn vert_mutator(&mut self, id: VertexId) -> MeshMutator<VertexId> {
-        MeshMutator {
-            conn: &mut self.connectivity,
-            value: id,
-        }
-    }
-    pub fn he_mutator(&mut self, id: HalfedgeId) -> MeshMutator<HalfedgeId> {
-        MeshMutator {
-            conn: &mut self.connectivity,
-            value: id,
-        }
-    }
-    pub fn face_mutator(&mut self, id: FaceId) -> MeshMutator<FaceId> {
+    pub fn get_mut<T>(&mut self, id: T) -> MeshMutator<T> {
         MeshMutator {
             conn: &mut self.connectivity,
             value: id,
@@ -280,7 +272,7 @@ impl SMesh {
         }
 
         for v_id in needs_adjust {
-            self.vert_mutator(v_id).adjust_outgoing_halfedge()?;
+            self.get_mut(v_id).adjust_outgoing_halfedge()?;
         }
 
         Ok(face_id)
@@ -295,8 +287,9 @@ pub struct MeshMutator<'a, T> {
 /// Vertex mut ops
 impl MeshMutator<'_, VertexId> {
     /// Set outgoing halfedge
-    pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) {
-        self.conn.vert_mut(self.value).halfedge = id;
+    pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) -> SMeshResult<()> {
+        self.conn.vert_mut(self.value)?.halfedge = id;
+        Ok(())
     }
 
     /// Set outgoing halfedge to boundary edge if one exists
@@ -306,7 +299,7 @@ impl MeshMutator<'_, VertexId> {
 
         loop {
             if h.is_boundary_c(self.conn) {
-                self.set_halfedge(Some(h));
+                self.set_halfedge(Some(h))?;
                 break;
             }
             h = h.cw_rotated_neighbour().run(self.conn)?;
@@ -316,50 +309,75 @@ impl MeshMutator<'_, VertexId> {
         }
         Ok(())
     }
+
+    pub fn delete(mut self) -> SMeshResult<()> {
+        self.conn.vertices.remove(self.value);
+        Ok(())
+    }
 }
 
 /// Halfedge mut ops
 impl MeshMutator<'_, HalfedgeId> {
     /// Set "next" id for this halfedge, and inversely the "prev" id for the next
-    pub fn set_next(&mut self, next: Option<HalfedgeId>) {
+    pub fn set_next(&mut self, next: Option<HalfedgeId>) -> SMeshResult<()> {
         let he = self.value;
-        self.conn.he_mut(he).next = next;
+        self.conn.he_mut(he)?.next = next;
         if let Some(next) = next {
-            self.conn.he_mut(next).prev = Some(self.value);
+            self.conn.he_mut(next)?.prev = Some(self.value);
         }
+        Ok(())
     }
 
     /// Set "prev" id for this halfedge, and inversely the "next" id for the prev
-    pub fn set_prev(&mut self, prev: Option<HalfedgeId>) {
+    pub fn set_prev(&mut self, prev: Option<HalfedgeId>) -> SMeshResult<()> {
         let he = self.value;
-        self.conn.he_mut(he).prev = prev;
+        self.conn.he_mut(he)?.prev = prev;
         if let Some(prev) = prev {
-            self.conn.he_mut(prev).next = Some(self.value);
+            self.conn.he_mut(prev)?.next = Some(self.value);
         }
+        Ok(())
     }
 
     /// Set "opposite" id for this halfedge, and this edge as "opposite" for the other
-    pub fn set_opposite(&mut self, opposite: HalfedgeId) {
+    pub fn set_opposite(&mut self, opposite: HalfedgeId) -> SMeshResult<()> {
         let he = self.value;
-        self.conn.he_mut(he).opposite = Some(opposite);
-        self.conn.he_mut(opposite).opposite = Some(he);
+        self.conn.he_mut(he)?.opposite = Some(opposite);
+        self.conn.he_mut(opposite)?.opposite = Some(he);
+        Ok(())
     }
 
     /// Set the dst vertex id
-    pub fn set_vertex(&mut self, vertex: VertexId) {
-        self.conn.he_mut(self.value).vertex = vertex;
+    pub fn set_vertex(&mut self, vertex: VertexId) -> SMeshResult<()> {
+        self.conn.he_mut(self.value)?.vertex = vertex;
+        Ok(())
     }
 
     /// Set the face id
-    pub fn set_face(&mut self, face: Option<FaceId>) {
-        self.conn.he_mut(self.value).face = face;
+    pub fn set_face(&mut self, face: Option<FaceId>) -> SMeshResult<()> {
+        self.conn.he_mut(self.value)?.face = face;
+        Ok(())
+    }
+
+    pub fn delete(mut self) -> SMeshResult<()> {
+        if let Some(h) = self.conn.halfedges.remove(self.value) {
+            if let Some(o) = h.opposite {
+                self.conn.halfedges.remove(o);
+            }
+        }
+        Ok(())
     }
 }
 
 /// Face mut ops
 impl MeshMutator<'_, FaceId> {
     /// Set halfedge
-    pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) {
-        self.conn.face_mut(self.value).halfedge = id;
+    pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) -> SMeshResult<()> {
+        self.conn.face_mut(self.value)?.halfedge = id;
+        Ok(())
+    }
+
+    pub fn delete(mut self) -> SMeshResult<()> {
+        self.conn.faces.remove(self.value);
+        Ok(())
     }
 }

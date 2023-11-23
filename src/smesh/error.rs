@@ -1,5 +1,5 @@
 use crate::smesh::*;
-use std::fmt::{Display, Formatter, Pointer};
+use std::fmt::{Display, Formatter};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, Copy, PartialEq)]
