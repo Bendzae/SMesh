@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
+
 use smesh::prelude::*;
+use smesh::test_utils::edge_onering;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Selection {
@@ -17,7 +19,10 @@ struct DebugRenderSMesh {
     pub selection: Selection,
 }
 
-fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
+#[derive(Component)]
+struct UiTag;
+
+fn init_system(mut commands: Commands) {
     // Spawn SMesh
     let mut mesh = SMesh::new();
     let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
@@ -29,48 +34,16 @@ fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMate
     let _ = mesh.add_face(vec![v0, v1, v2, v3]);
     let _ = mesh.add_face(vec![v0, v4, v1]);
 
-    // let v4 = mesh.add_vertex(vec3(1.0, 2.0, 0.0));
-    // mesh.add_edge(v2, v4);
+    let v0 = mesh.vertices().keys().next().unwrap();
 
-    let test_he = v0.halfedge_to(v1).run(&mesh).unwrap();
+    // let test_he = v0.halfedge_to(v1).run(&mesh).unwrap();
     commands.spawn((
         DebugRenderSMesh {
             mesh,
-            selection: Selection::Halfedge(test_he),
+            selection: Selection::Vertex(v0),
         },
         TransformBundle::default(),
     ));
-
-    // UI
-    let style = TextStyle {
-        font_size: 32.0,
-        ..default()
-    };
-
-    // root node
-    commands
-        .spawn(NodeBundle {
-            style: Style {
-                flex_direction: FlexDirection::Column,
-                column_gap: Val::Px(5.0),
-                padding: UiRect::all(Val::Px(5.0)),
-                ..default()
-            },
-            ..default()
-        })
-        .with_children(|parent| {
-            for s in [
-                "N: next halfedge",
-                "P: previous halfedge",
-                "O: opposite halfedge",
-                "R: cw rotated halfedge",
-                "V: Source Vertex",
-            ]
-            .iter()
-            {
-                parent.spawn(TextBundle::from_section(*s, style.clone()));
-            }
-        });
 
     // Camera
     commands.spawn((
@@ -125,6 +98,23 @@ fn debug_draw_smesh(
         };
         draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
     }
+    // Faces
+    for face_id in mesh.faces().keys() {
+        let vertex_positions = face_id
+            .vertices(mesh)
+            .map(|v| *mesh.positions.get(v).unwrap());
+        let (count, sum) = vertex_positions
+            .enumerate()
+            .reduce(|(i, pos), (i_acc, acc)| (i + i_acc, acc + pos))
+            .unwrap();
+        let center = t.transform_point(sum / count as f32);
+        let color = if debug_smesh.selection == Selection::Face(face_id) {
+            Color::ORANGE_RED
+        } else {
+            Color::YELLOW
+        };
+        gizmos.sphere(center, Quat::IDENTITY, 0.02, color);
+    }
     Ok(())
 }
 
@@ -153,6 +143,10 @@ fn change_selection_inner(
                 if input.just_pressed(KeyCode::N) {
                     d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);
                 }
+                if input.just_pressed(KeyCode::D) {
+                    d.mesh.delete_vertex(id)?;
+                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                }
             }
             Selection::Halfedge(id) => {
                 if input.just_pressed(KeyCode::N) {
@@ -170,6 +164,9 @@ fn change_selection_inner(
                 if input.just_pressed(KeyCode::V) {
                     d.selection = Selection::Vertex(id.vert().run(&d.mesh)?);
                 }
+                if input.just_pressed(KeyCode::F) {
+                    d.selection = Selection::Face(id.face().run(&d.mesh)?);
+                }
                 if input.just_pressed(KeyCode::S) {
                     let mesh = &mut d.mesh;
                     let v0 = id.src_vert().run(mesh)?;
@@ -186,8 +183,20 @@ fn change_selection_inner(
                         }
                     }
                 }
+                if input.just_pressed(KeyCode::D) {
+                    d.mesh.delete_edge(id)?;
+                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                }
             }
-            Selection::Face(_) => {}
+            Selection::Face(id) => {
+                if input.just_pressed(KeyCode::D) {
+                    d.mesh.delete_face(id)?;
+                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                }
+                if input.just_pressed(KeyCode::N) {
+                    d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);
+                }
+            }
             Selection::None => {}
         }
     }
@@ -197,6 +206,62 @@ fn change_selection_inner(
 fn selection_log_system(q_sel: Query<&DebugRenderSMesh, Changed<DebugRenderSMesh>>) {
     for d in q_sel.iter() {
         info!("Selected: {:?}", d.selection);
+    }
+}
+
+fn update_ui_system(
+    q_sel: Query<&DebugRenderSMesh, Changed<DebugRenderSMesh>>,
+    q_ui: Query<Entity, With<UiTag>>,
+    mut commands: Commands,
+) {
+    for d in q_sel.iter() {
+        let values = match d.selection {
+            Selection::Vertex(_) => {
+                vec!["N: outgoing halfedge", "D: delete vertex"]
+            }
+            Selection::Halfedge(_) => {
+                vec![
+                    "N: next halfedge",
+                    "P: previous halfedge",
+                    "O: opposite halfedge",
+                    "R: cw rotated halfedge",
+                    "V: Source Vertex",
+                    "D: Delete edge",
+                    "S: Split edge",
+                ]
+            }
+            Selection::Face(_) => {
+                vec!["N: associated halfedge", "D: Delete face"]
+            }
+            Selection::None => {
+                vec![]
+            }
+        };
+        if let Ok(e) = q_ui.get_single() {
+            commands.entity(e).despawn_recursive();
+        }
+        let style = TextStyle {
+            font_size: 32.0,
+            ..default()
+        };
+        commands
+            .spawn((
+                UiTag,
+                NodeBundle {
+                    style: Style {
+                        flex_direction: FlexDirection::Column,
+                        column_gap: Val::Px(5.0),
+                        padding: UiRect::all(Val::Px(5.0)),
+                        ..default()
+                    },
+                    ..default()
+                },
+            ))
+            .with_children(|parent| {
+                for s in values.iter() {
+                    parent.spawn(TextBundle::from_section(*s, style.clone()));
+                }
+            });
     }
 }
 
@@ -220,6 +285,7 @@ fn main() {
                 debug_draw_smesh_system,
                 change_selection_system,
                 selection_log_system,
+                update_ui_system,
             ),
         )
         .run();
