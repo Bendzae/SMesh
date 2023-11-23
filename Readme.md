@@ -4,9 +4,11 @@ SMesh is a polygon mesh manipulation library based
 on the [Surface Mesh](https://link.springer.com/chapter/10.1007/978-3-642-24734-7_29) data structure and
 the [pmp](https://github.com/pmp-library/pmp-library) library.
 
-For now it is basically a rust port of [pmp](https://github.com/pmp-library/pmp-library) but I hope to adapt
-implementations and api to be more rust idiomatic.
-Aswell as adding additional operations.
+For now it is basically a rust port of the amazing [pmp](https://github.com/pmp-library/pmp-library) library, but I hope to adapt
+implementations and api to be more rust idiomatic as well as adding additional operations.
+It uses a slotmap based implementation of the Surface Mesh which takes heavy inspiration from 
+[blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh implementation.
+
 
 ### Usage
 
