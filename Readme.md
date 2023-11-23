@@ -1,7 +1,5 @@
 # SMesh
 
-### Introduction
-
 SMesh is a polygon mesh manipulation library based
 on the [Surface Mesh](https://link.springer.com/chapter/10.1007/978-3-642-24734-7_29) data structure and
 the [pmp](https://github.com/pmp-library/pmp-library) library.
