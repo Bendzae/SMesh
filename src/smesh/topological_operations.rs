@@ -118,6 +118,10 @@ impl SMesh {
         for he in adjust_edges {
             self.get_mut(he).set_face(None)?;
         }
+
+        // delete face
+        self.get_mut(f).delete()?;
+
         // delete all collected (half)edges
         // delete isolated vertices
         for h0 in delete_edges {
@@ -158,7 +162,7 @@ impl SMesh {
 
         // update outgoing halfedge handles of remaining vertices
         for v in delete_verts {
-            self.get_mut(v).adjust_outgoing_halfedge()?;
+            let _ = self.get_mut(v).adjust_outgoing_halfedge();
         }
         Ok(())
     }

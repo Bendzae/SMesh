@@ -109,7 +109,7 @@ pub trait FaceIterators {
 
 impl VertexIterators for MeshQueryBuilder<VertexId> {
     fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter {
-        let start = self.halfedge().run(mesh).unwrap();
+        let start = self.halfedge().run(mesh).unwrap_or(HalfedgeId::default());
         VertexAroundVertexIter {
             conn: &mesh.connectivity,
             start,
@@ -118,7 +118,7 @@ impl VertexIterators for MeshQueryBuilder<VertexId> {
     }
 
     fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter {
-        let start = self.halfedge().run(mesh).unwrap();
+        let start = self.halfedge().run(mesh).unwrap_or(HalfedgeId::default());
         HalfedgeAroundVertexIter {
             conn: &mesh.connectivity,
             start,
@@ -127,7 +127,7 @@ impl VertexIterators for MeshQueryBuilder<VertexId> {
     }
 
     fn faces(self, mesh: &SMesh) -> FaceAroundVertexIter {
-        let start = self.halfedge().run(mesh).unwrap();
+        let start = self.halfedge().run(mesh).unwrap_or(HalfedgeId::default());
         FaceAroundVertexIter {
             conn: &mesh.connectivity,
             start,
@@ -152,7 +152,7 @@ impl VertexIterators for VertexId {
 
 impl FaceIterators for MeshQueryBuilder<FaceId> {
     fn vertices(self, mesh: &SMesh) -> VertexAroundFaceIter {
-        let start = self.halfedge().run(mesh).unwrap();
+        let start = self.halfedge().run(mesh).unwrap_or(HalfedgeId::default());
         VertexAroundFaceIter {
             conn: &mesh.connectivity,
             start,
@@ -161,7 +161,7 @@ impl FaceIterators for MeshQueryBuilder<FaceId> {
     }
 
     fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundFaceIter {
-        let start = self.halfedge().run(mesh).unwrap();
+        let start = self.halfedge().run(mesh).unwrap_or(HalfedgeId::default());
         HalfedgeAroundFaceIter {
             conn: &mesh.connectivity,
             start,
