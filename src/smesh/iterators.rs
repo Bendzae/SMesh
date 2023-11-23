@@ -47,13 +47,18 @@ impl<'a> Iterator for FaceAroundVertexIter<'a> {
     type Item = FaceId;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let Some(current) = self.current else {
-            return None;
-        };
-        let face = current.face().run(self.conn);
-        let next = current.ccw_rotated_neighbour().run(self.conn).ok();
-        self.current = if next == Some(self.start) { None } else { next };
-        face.ok()
+        loop {
+            let Some(current) = self.current else {
+                return None;
+            };
+
+            let face = current.face().run(self.conn);
+            let next = current.ccw_rotated_neighbour().run(self.conn).ok();
+            self.current = if next == Some(self.start) { None } else { next };
+            if let Ok(face) = face {
+                return Some(face);
+            }
+        }
     }
 }
 

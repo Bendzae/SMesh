@@ -142,6 +142,27 @@ impl SMesh {
         (he_0_id, he_1_id)
     }
 
+    /// Construct a triangle from the given vertices
+    pub fn add_triangle(
+        &mut self,
+        v0: VertexId,
+        v1: VertexId,
+        v2: VertexId,
+    ) -> SMeshResult<FaceId> {
+        self.add_face(vec![v0, v1, v2])
+    }
+
+    /// Construct a quad from the given vertices
+    pub fn add_quad(
+        &mut self,
+        v0: VertexId,
+        v1: VertexId,
+        v2: VertexId,
+        v3: VertexId,
+    ) -> SMeshResult<FaceId> {
+        self.add_face(vec![v0, v1, v2, v3])
+    }
+
     /// Construct a new face from a list of existing vertices
     /// Takes care of connectivity
     pub fn add_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
