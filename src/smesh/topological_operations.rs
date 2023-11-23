@@ -99,7 +99,13 @@ impl SMesh {
     }
 
     pub fn delete_edge(&mut self, h: HalfedgeId) -> SMeshResult<()> {
-        todo!()
+        if let Ok(f) = h.face().run(self) {
+            self.delete_face(f)?;
+        }
+        if let Ok(f) = h.opposite().face().run(self) {
+            self.delete_face(f)?;
+        }
+        Ok(())
     }
 
     pub fn delete_face(&mut self, f: FaceId) -> SMeshResult<()> {

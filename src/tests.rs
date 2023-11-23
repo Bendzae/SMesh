@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod smesh_tests {
     use crate::prelude::*;
-    use crate::test_utils::vertex_onering;
+    use crate::test_utils::{edge_onering, vertex_onering};
     use glam::vec3;
+    use slotmap::KeyData;
 
     #[test]
     fn empty_mesh() -> SMeshResult<()> {
@@ -94,6 +95,20 @@ mod smesh_tests {
         mesh.delete_vertex(v0)?;
         assert_eq!(mesh.vertices().len(), 6);
         assert_eq!(mesh.faces().len(), 4);
+        Ok(())
+    }
+    #[test]
+    fn delete_center_edge() -> SMeshResult<()> {
+        let mut mesh = edge_onering()?;
+        assert_eq!(mesh.vertices().len(), 10);
+        assert_eq!(mesh.faces().len(), 10);
+        // the two vertices of the center edge
+        let va = VertexId::from(KeyData::from_ffi(5));
+        let vb = VertexId::from(KeyData::from_ffi(6));
+        let e = va.halfedge_to(vb).run(&mesh)?;
+        mesh.delete_edge(e)?;
+        assert_eq!(mesh.vertices().len(), 10);
+        assert_eq!(mesh.faces().len(), 8);
         Ok(())
     }
 
