@@ -1,7 +1,5 @@
 # SMesh
 
---- 
-
 ### Introduction
 
 SMesh is a polygon mesh manipulation library based
