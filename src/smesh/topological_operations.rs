@@ -257,6 +257,91 @@ impl SMesh {
         Ok(())
     }
 
+    pub fn is_removal_ok(&self, h0: HalfedgeId) -> SMeshResult<()> {
+        let h1 = h0.opposite().run(self)?;
+        let v0 = h0.dst_vert().run(self)?;
+        let v1 = h1.dst_vert().run(self)?;
+
+        // boundary?
+        let f0 = h0.face().run(self)?;
+        let f1 = h1.face().run(self)?;
+
+        // same face?
+        if f0 == f1 {
+            bail!(TopologyError);
+        }
+
+        // are the two faces connect through another vertex?
+        for v in f0.vertices(self) {
+            if v != v0 && v != v1 {
+                for f in v.faces(self) {
+                    if f == f1 {
+                        bail!(TopologyError);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn remove_edge(&mut self, h0: HalfedgeId) -> SMeshResult<()> {
+        self.is_removal_ok(h0)?;
+
+        let h1 = h0.opposite().run(self)?;
+
+        let v0 = h0.dst_vert().run(self)?;
+        let v1 = h1.dst_vert().run(self)?;
+
+        let f0 = h0.face().run(self);
+        let f1 = h1.face().run(self);
+
+        let h0_prev = h0.prev().run(self);
+        let h0_next = h0.next().run(self);
+        let h1_prev = h1.prev().run(self);
+        let h1_next = h1.next().run(self);
+
+        // adjust vertex->halfedge
+        if v0.halfedge().run(self) == Ok(h1) {
+            self.get_mut(v0).set_halfedge(h0_next.ok())?;
+        }
+        if v1.halfedge().run(self) == Ok(h0) {
+            self.get_mut(v1).set_halfedge(h1_next.ok())?;
+        }
+
+        // adjust halfedge->face
+        if let Ok(f0) = f0 {
+            let hes = f0.halfedges(self).collect_vec();
+            for h in hes {
+                self.get_mut(h).set_face(f1.ok())?;
+            }
+        }
+
+        // adjust halfedge->halfedge
+        if let Ok(h1_prev) = h1_prev {
+            self.get_mut(h1_prev).set_next(h0_next.ok())?;
+        }
+        if let Ok(h0_prev) = h0_prev {
+            self.get_mut(h0_prev).set_next(h1_next.ok())?;
+        }
+
+        // adjust face->halfedge
+        // if (halfedge(f1) == h1)
+        // set_halfedge(f1, h1_next);
+        if let Ok(f1) = f1 {
+            if f1.halfedge().run(self) == Ok(h1) {
+                self.get_mut(f1).set_halfedge(h1_next.ok())?;
+            }
+        }
+
+        // delete face f0 and edge e
+        if let Ok(f0) = f0 {
+            self.get_mut(f0).delete()?;
+        }
+        self.get_mut(h0).delete()?;
+        Ok(())
+    }
+
     fn remove_edge_helper(&mut self, h: HalfedgeId) -> SMeshResult<()> {
         let hn = h.next().run(self)?;
         let hp = h.prev().run(self)?;

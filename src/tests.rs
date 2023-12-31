@@ -180,6 +180,23 @@ mod smesh_tests {
         assert_eq!(mesh.faces().len(), 1);
         Ok(())
     }
+    #[test]
+    fn edge_removal_ok() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let (_, v1, v2, _, _, _) = add_triangles(mesh);
+        let h = v1.halfedge_to(v2).run(mesh)?;
+        assert!(mesh.is_removal_ok(h).is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn edge_removal_not_ok() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let (_, v1, v2, _) = add_triangle(mesh);
+        let h = v1.halfedge_to(v2).run(mesh)?;
+        assert!(mesh.is_removal_ok(h).is_err());
+        Ok(())
+    }
 
     /// Utils
     fn add_triangle(mesh: &mut SMesh) -> (VertexId, VertexId, VertexId, FaceId) {

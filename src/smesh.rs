@@ -331,7 +331,7 @@ impl MeshMutator<'_, VertexId> {
         Ok(())
     }
 
-    pub fn delete(mut self) -> SMeshResult<()> {
+    pub fn delete(self) -> SMeshResult<()> {
         self.conn.vertices.remove(self.value);
         Ok(())
     }
