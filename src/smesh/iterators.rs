@@ -1,4 +1,4 @@
-use crate::smesh::query::*;
+use crate::smesh::mesh_query::*;
 use crate::smesh::*;
 
 pub struct HalfedgeAroundVertexIter<'a> {

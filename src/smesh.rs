@@ -5,13 +5,12 @@ use slotmap::{new_key_type, SecondaryMap, SlotMap};
 use crate::bail;
 use crate::prelude::SMeshError::FaceNotFound;
 use crate::smesh::error::*;
-use crate::smesh::query::*;
+use crate::smesh::mesh_query::*;
 
 pub mod attribute;
 pub mod error;
 pub mod iterators;
 pub mod mesh_query;
-pub mod query;
 pub mod topological_operations;
 
 new_key_type! { pub struct VertexId; }

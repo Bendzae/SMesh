@@ -1,3 +1,1 @@
-pub use crate::smesh::{
-    error::*, iterators::*, mesh_query::*, query::*, topological_operations::*, *,
-};
+pub use crate::smesh::{error::*, iterators::*, mesh_query::*, topological_operations::*, *};
