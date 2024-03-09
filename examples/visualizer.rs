@@ -129,45 +129,48 @@ fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
     gizmos.line(line_end - dir * 0.05 + offset * 0.5, line_end, color);
 }
 
-fn change_selection_system(input: Res<Input<KeyCode>>, mut q_smesh: Query<&mut DebugRenderSMesh>) {
+fn change_selection_system(
+    input: Res<ButtonInput<KeyCode>>,
+    mut q_smesh: Query<&mut DebugRenderSMesh>,
+) {
     change_selection_inner(&input, &mut q_smesh)
         .unwrap_or_else(|e| warn!("Error while trying to perform mesh operation: {:?}", e));
 }
 fn change_selection_inner(
-    input: &Res<Input<KeyCode>>,
+    input: &Res<ButtonInput<KeyCode>>,
     q_smesh: &mut Query<&mut DebugRenderSMesh>,
 ) -> SMeshResult<()> {
     for mut d in q_smesh.iter_mut() {
         match d.selection {
             Selection::Vertex(id) => {
-                if input.just_pressed(KeyCode::N) {
+                if input.just_pressed(KeyCode::KeyN) {
                     d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::D) {
+                if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_vertex(id)?;
                     d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
                 }
             }
             Selection::Halfedge(id) => {
-                if input.just_pressed(KeyCode::N) {
+                if input.just_pressed(KeyCode::KeyN) {
                     d.selection = Selection::Halfedge(id.next().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::P) {
+                if input.just_pressed(KeyCode::KeyP) {
                     d.selection = Selection::Halfedge(id.prev().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::O) {
+                if input.just_pressed(KeyCode::KeyO) {
                     d.selection = Selection::Halfedge(id.opposite().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::R) {
+                if input.just_pressed(KeyCode::KeyR) {
                     d.selection = Selection::Halfedge(id.cw_rotated_neighbour().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::V) {
+                if input.just_pressed(KeyCode::KeyV) {
                     d.selection = Selection::Vertex(id.vert().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::F) {
+                if input.just_pressed(KeyCode::KeyF) {
                     d.selection = Selection::Face(id.face().run(&d.mesh)?);
                 }
-                if input.just_pressed(KeyCode::S) {
+                if input.just_pressed(KeyCode::KeyS) {
                     let mesh = &mut d.mesh;
                     let v0 = id.src_vert().run(mesh)?;
                     let v1 = id.dst_vert().run(mesh)?;
@@ -183,17 +186,17 @@ fn change_selection_inner(
                         }
                     }
                 }
-                if input.just_pressed(KeyCode::D) {
+                if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_edge(id)?;
                     d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
                 }
             }
             Selection::Face(id) => {
-                if input.just_pressed(KeyCode::D) {
+                if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_face(id)?;
                     d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
                 }
-                if input.just_pressed(KeyCode::N) {
+                if input.just_pressed(KeyCode::KeyN) {
                     d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);
                 }
             }
