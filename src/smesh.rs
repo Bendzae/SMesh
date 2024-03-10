@@ -70,8 +70,9 @@ pub struct SMesh {
 
     // Attributes
     pub positions: SecondaryMap<VertexId, Vec3>,
-    pub normals: Option<SecondaryMap<VertexId, Vec3>>,
-    pub uvs: Option<SecondaryMap<VertexId, Vec2>>,
+    pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
+    pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
+    pub uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
 }
 
 /// Init, Getters
