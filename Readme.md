@@ -1,3 +1,6 @@
+[![CI](https://github.com/Bendzae/SMesh/actions/workflows/rust.yml/badge.svg)](https://github.com/Bendzae/SMesh/actions/workflows/rust.yml)
+[![crates.io](https://img.shields.io/crates/v/smesh.svg)](https://crates.io/crates/smesh)
+
 # SMesh
 
 SMesh is a polygon mesh manipulation library based on the
