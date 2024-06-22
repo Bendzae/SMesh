@@ -25,8 +25,55 @@ There is also an example for the bevy mesh integration:
 
 ### Usage
 
+_Preface_: Mesh elements in SMesh are identified by a unique typesafe id, which can be of type:
+`VertexId`, `HalfedgeId` and `FaceId`.
+
+#### Mesh creation
+
+SMesh has a simple api to add vertices to your mesh and connect them to faces:
+_Add vertices_
+
+```rust
+    let mut smesh = SMesh::new();
+    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0)); // Returns a unique VertexId
+    let v1 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+    let v2 = smesh.add_vertex(vec3(1.0, 1.0, 0.0));
+    let v3 = smesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+```
+
+_Build face_
+
+```rust
+    smesh.add_face(vec![v0, v1, v2, v3])?;
+```
+
+#### Mesh queries
+
+SMesh provides a chainable api to query mesh elements using the typical halfedge-mesh relationships:
+
+_get outgoing halfedge of a vertex_
+
+```rust
+let outgoing_halfedge_query = v0.halfedge(); // returns a MeshQueryBuilder<HalfedgeId>
+```
+
+_you can execute the query on a smesh instance by using `.run(&smesh)`_
+
+```rust
+let outgoing_halfedge = v0.halfedge().run(&smesh)?;  // returns a HalfedgeId
+```
+
+_chaining queries_
+
+```rust
+let vertex = v0.halfedge_to(v1).cw_rotated_neighbour().dst_vert().run(&smesh)?;  // returns a VertexId
+```
+
+#### Mesh operations
+
 Coming soon...
-(Check examples for now)
+
+Please check the examples for more :)
 
 ### Goals
 
