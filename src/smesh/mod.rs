@@ -121,6 +121,13 @@ impl SMesh {
 /// Operations for adding mesh elements
 impl SMesh {
     /// Create an isolated vertex to the mesh
+    /// ```
+    /// use glam::vec3;
+    /// use smesh::smesh::SMesh;
+    ///
+    /// let mesh = &mut SMesh::new();
+    /// mesh.add_vertex(vec3(0.0,0.0,0.0));
+    /// ```
     pub fn add_vertex(&mut self, position: Vec3) -> VertexId {
         let id = self.vertices_mut().insert(Vertex::default());
         self.positions.insert(id, position);

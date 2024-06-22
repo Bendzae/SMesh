@@ -119,6 +119,7 @@ macro_rules! impl_id_extensions_for {
 }
 
 pub trait VertexOps {
+    /// get outgoing halfege
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
     fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId>;
     fn is_boundary(&self, mesh: &SMesh) -> bool;

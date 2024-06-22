@@ -8,18 +8,18 @@ edition = "2021"
 [dependencies]
 glam = "0.25.0"
 slotmap = "1.0.7"
-itertools = "0.12.1"
-thiserror = "1.0.57"
+itertools = "0.13.0"
+thiserror = "1.0.61"
 
 # Adapter dependencies
-bevy = { version = "0.13.0", default-features = false, features = [
+bevy = { version = "0.13", default-features = false, features = [
   "bevy_pbr",
 ], optional = true }
 
 [dev-dependencies]
-bevy = "0.13.0"
-bevy_panorbit_camera = "0.16.1"
-bevy-inspector-egui = "0.23.4"
+bevy = "0.13.2"
+bevy_panorbit_camera = "0.18.2"
+bevy-inspector-egui = "0.24.0"
 
 
 [features]

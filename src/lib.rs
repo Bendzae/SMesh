@@ -1,4 +1,5 @@
-/// SMesh
+//! # SMesh
+//! A polygon mesh manipulation library
 
 pub mod prelude;
 pub mod smesh;
