@@ -12,9 +12,21 @@ implementation of the Surface Mesh which takes heavy inspiration from
 [blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh
 implementation.
 
+### Examples
+
+![screenshot](visualizer_screenshot.png)
+_use the visualizer example app to interactively explore library features_
+
+`cargo run --example visualizer`
+
+There is also an example for the bevy mesh integration:
+
+`cargo run --example bevy_mesh`
+
 ### Usage
 
 Coming soon...
+(Check examples for now)
 
 ### Goals
 
