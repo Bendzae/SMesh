@@ -2,7 +2,13 @@
 name = "smesh"
 version = "0.2.0"
 edition = "2021"
-
+authors = ["Ben Dzaebel <ben@bendz.dev>"]
+hompage = "bendz.dev"
+license = "MIT"
+repository = "https://github.com/Bendzae/SMesh"
+categories = ["3D graphics", "mesh manipulation"]
+keywords = ["mesh", "halfedge", "procedural", "polygon", "3D"]
+description = "A fast and ergonomic surface-mesh/halfedge-mesh implementation and polygon mesh manipulation library based on pmp"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
