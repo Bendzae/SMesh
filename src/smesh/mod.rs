@@ -1,13 +1,16 @@
+use std::collections::HashMap;
+
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{new_key_type, SecondaryMap, SlotMap};
 
-use crate::bail;
-use crate::prelude::SMeshError::FaceNotFound;
+use crate::prelude::{attribute::CustomAttributeMap, SMeshError::FaceNotFound};
 use crate::smesh::error::*;
 use crate::smesh::mesh_query::*;
+use crate::{bail, prelude::attribute::MeshAttribute};
 
 pub mod attribute;
+pub mod edit_operations;
 pub mod error;
 pub mod iterators;
 pub mod mesh_query;
@@ -73,6 +76,9 @@ pub struct SMesh {
     pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
     pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
     pub uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
+    vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
+    edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
+    face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
 }
 
 /// Init, Getters
