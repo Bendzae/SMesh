@@ -5,7 +5,7 @@ use crate::smesh::*;
 /// Higher-level Topological Operations
 ///
 impl SMesh {
-    /// \return whether the mesh a triangle mesh. this function simply tests
+    /// whether the mesh a triangle mesh. this function simply tests
     /// each face, and therefore is not very efficient.
     pub fn is_triangle_mesh(&self) -> bool {
         for (id, _) in &self.connectivity.faces {
@@ -16,7 +16,7 @@ impl SMesh {
         true
     }
 
-    /// \return whether the mesh a quad mesh. this function simply tests
+    /// whether the mesh a quad mesh. this function simply tests
     /// each face, and therefore is not very efficient.
     pub fn is_quad_mesh(&self) -> bool {
         for (id, _) in &self.connectivity.faces {
@@ -27,7 +27,7 @@ impl SMesh {
         true
     }
 
-    /// Subdivide the edge \p e = (v0,v1) by splitting it into the two edge
+    /// Subdivide the edge  e = (v0,v1) by splitting it into the two edge
     /// (v0,p) and (p,v1). Note that this function does not introduce any
     /// other edge or faces. It simply splits the edge. Returns halfedge that
     /// points to p.
@@ -173,8 +173,8 @@ impl SMesh {
         Ok(())
     }
 
-    /// \return whether collapsing the halfedge \p v0v1 is topologically legal.
-    /// \attention This function is only valid for triangle meshes.
+    /// whether collapsing the halfedge  v0v1 is topologically legal.
+    /// This function is only valid for triangle meshes.
     pub fn is_collapse_ok(&self, v0v1: HalfedgeId) -> SMeshResult<()> {
         let v1v0 = v0v1.opposite().run(self)?;
         let v0 = v1v0.dst_vert().run(self)?;
@@ -231,12 +231,12 @@ impl SMesh {
         Ok(())
     }
 
-    /// Collapse the halfedge \p h by moving its start vertex into its target
+    /// Collapse the halfedge h by moving its start vertex into its target
     /// vertex. For non-boundary halfedges this function removes one vertex, three
     /// edges, and two faces. For boundary halfedges it removes one vertex, two
     /// edges and one face.
-    /// \attention This function is only valid for triangle meshes.
-    /// \attention Halfedge collapses might lead to invalid faces. Call
+    /// This function is only valid for triangle meshes.
+    /// Halfedge collapses might lead to invalid faces. Call
     /// is_collapse_ok(Halfedge) to be sure the collapse is legal.
     pub fn collapse(&mut self, h: HalfedgeId) -> SMeshResult<()> {
         let h0 = h;
