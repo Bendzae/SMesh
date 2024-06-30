@@ -88,7 +88,7 @@ I aim to provide a flexible rust implementation of the Surface Mesh with a focus
 on usefulness for procedural mesh generation. Other goals are:
 
 - Ergonomic and easy-to-use api
-- Port most operations from the pmp library
+- Port most operations from the pmp library and blackjack
 - Support most operations that are possible in modern 3D modeling software like
   blender
 - Integration with the bevy game engine
