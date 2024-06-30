@@ -2,20 +2,22 @@
 [![crates.io](https://img.shields.io/crates/v/smesh.svg)](https://crates.io/crates/smesh)
 
 # SMesh
+
 > [!CAUTION]
 > Library is still work in progress
 
 SMesh is a polygon mesh manipulation library based on the
 [Surface Mesh](https://link.springer.com/chapter/10.1007/978-3-642-24734-7_29)
 data structure and the [pmp](https://github.com/pmp-library/pmp-library)
-library.
+library and the halfedge-mesh implementation of the [blackjack](https://github.com/setzer22/blackjack)
+project.
 
-For now it is a rough port of the amazing
-[pmp](https://github.com/pmp-library/pmp-library) library with a "rusty" api on
-top, but I plan to add additional functionality. The libary uses a slotmap based
-implementation of the Surface Mesh which takes heavy inspiration from
-[blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh
-implementation.
+The libary uses a slotmap based implementation of the Surface Mesh which takes heavy inspiration from
+[blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh implementation.
+
+The goal of this library is to provide a flexible mesh abstraction and
+set of operations to be used for procedural modeling and procedural generation
+of 3D meshes.
 
 ### Examples
 
