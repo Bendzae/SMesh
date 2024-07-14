@@ -31,6 +31,8 @@ pub enum SMeshError {
     UnsupportedOperation,
     #[error("Default SMesh Error")]
     DefaultError,
+    #[error("Error: `{0}`")]
+    CustomError(&'static str),
 }
 
 pub type SMeshResult<T> = Result<T, SMeshError>;
@@ -42,6 +44,9 @@ macro_rules! bail {
     };
     ($error:ident, $value:expr) => {
         return Err(SMeshError::$error($value))
+    };
+    ($value:expr) => {
+        return Err(SMeshError::CustomError($value))
     };
 }
 
