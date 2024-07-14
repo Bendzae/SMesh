@@ -319,6 +319,10 @@ fn eval_vertex_op(c: &Connectivity, id: VertexId, op: QueryOp) -> SMeshResult<Qu
             let initial_he = id.halfedge().run(c)?;
             let mut he = initial_he;
 
+            if id == dst_vertex {
+                bail!("HalfedgeTo: Inital and dst vertex are the same");
+            }
+
             let r = loop {
                 match he.dst_vert().run(c) {
                     Ok(id) => {
@@ -327,7 +331,7 @@ fn eval_vertex_op(c: &Connectivity, id: VertexId, op: QueryOp) -> SMeshResult<Qu
                         }
                         he = he.cw_rotated_neighbour().run(c)?;
                         if he == initial_he {
-                            break Err(SMeshError::DefaultError);
+                            bail!("HalfedgeTo: No connecting halfedge found");
                         }
                     }
                     Err(e) => {
