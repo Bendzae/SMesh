@@ -1,6 +1,7 @@
 use crate::smesh::mesh_query::*;
 use crate::smesh::*;
 
+#[derive(Debug, Clone)]
 pub struct HalfedgeAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -19,6 +20,7 @@ impl<'a> Iterator for HalfedgeAroundVertexIter<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct VertexAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -38,6 +40,7 @@ impl<'a> Iterator for VertexAroundVertexIter<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FaceAroundVertexIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
