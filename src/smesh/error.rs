@@ -1,4 +1,4 @@
-use crate::smesh::*;
+use crate::{prelude::model::mesh_elements::{FaceId, HalfedgeId, VertexId}, smesh::*};
 use std::fmt::{Display, Formatter};
 use thiserror::Error;
 

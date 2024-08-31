@@ -1,6 +1,5 @@
-use crate::bail;
-use crate::prelude::{FaceIterators, SMesh, SMeshError, SMeshResult, VertexIterators};
-use crate::smesh::{Connectivity, FaceId, HalfedgeId, VertexId};
+use crate::{bail, prelude::mesh_elements::{FaceId, HalfedgeId, VertexId}};
+use crate::prelude::{FaceIterators, SMeshError, SMeshResult, VertexIterators};
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

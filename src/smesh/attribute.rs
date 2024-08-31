@@ -4,8 +4,7 @@ use glam::{i32, Vec2, Vec3};
 use slotmap::SecondaryMap;
 
 use crate::{
-    bail,
-    prelude::{FaceId, HalfedgeId, SMesh, SMeshError, VertexId},
+    bail, prelude::{mesh::SMesh, mesh_elements::VertexId, SMeshError},
 };
 
 #[derive(Debug, Clone)]
@@ -220,7 +219,7 @@ impl SMesh {
 mod test {
     use glam::vec3;
 
-    use crate::prelude::{attribute::CustomAttributeMapOps, SMesh, VertexId};
+    use crate::prelude::{attribute::CustomAttributeMapOps, mesh::SMesh, mesh_elements::VertexId};
 
     #[test]
     fn basic_integer() {

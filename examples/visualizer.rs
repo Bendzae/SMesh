@@ -37,14 +37,32 @@ fn init_system(mut commands: Commands) {
     let v0 = mesh.vertices().keys().next().unwrap();
 
     // let test_he = v0.halfedge_to(v1).run(&mesh).unwrap();
+    // commands.spawn((
+    //     DebugRenderSMesh {
+    //         mesh,
+    //         selection: Selection::Vertex(v0),
+    //     },
+    //     TransformBundle::default(),
+    // ));
+
+    // Extrude test
+    let mut smesh = SMesh::new();
+    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+    let v1 = smesh.add_vertex(vec3(-1.0, -1.0, 1.0));
+    let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
+    let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+
+    let f0 = smesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+    smesh.extrude_faces(vec![f0], 1.0).unwrap();
+    
+
     commands.spawn((
         DebugRenderSMesh {
-            mesh,
+            mesh: smesh,
             selection: Selection::Vertex(v0),
         },
-        TransformBundle::default(),
+       TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
     ));
-
     // Camera
     commands.spawn((
         Camera3dBundle {
@@ -61,6 +79,7 @@ fn debug_draw_smesh_system(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut 
             .unwrap_or_else(|e| warn!("Error while drawing mesh: {:?}", e));
     }
 }
+
 fn debug_draw_smesh(
     debug_smesh: &DebugRenderSMesh,
     t: &Transform,
@@ -91,12 +110,12 @@ fn debug_draw_smesh(
             Color::TURQUOISE
         };
         draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color);
-        let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
-            Color::ORANGE_RED
-        } else {
-            Color::TURQUOISE
-        };
-        draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
+        // let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
+        //     Color::ORANGE_RED
+        // } else {
+        //     Color::TURQUOISE
+        // };
+        // draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
     }
     // Faces
     for face_id in mesh.faces().keys() {
@@ -120,7 +139,7 @@ fn debug_draw_smesh(
 
 fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
     let dir = (v1 - v0).normalize();
-    let normal = Vec3::Z; // TODO
+    let normal = Vec3::Y; // TODO
     let offset = dir.cross(normal) * 0.05;
     let line_start = v0 - offset + dir * 0.1;
     let line_end = v1 - offset - dir * 0.1;

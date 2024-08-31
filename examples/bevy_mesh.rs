@@ -35,6 +35,7 @@ fn init_system(
     smesh.add_face(vec![v4, v5, v1, v0]).unwrap();
 
     let v = smesh.add_vertex(vec3(0.0, 1.3, 0.3));
+
     let top_he = v3.halfedge_to(v2).run(&smesh).unwrap();
     smesh.insert_vertex(top_he, v).unwrap();
 
@@ -45,6 +46,39 @@ fn init_system(
         ..default()
     });
 
+    // Extrude edge test
+    let mut smesh = SMesh::new();
+    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+    let v1 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+
+    let (e0, _) = smesh.add_edge(v0, v1);
+    let e1 = smesh.extrude_edge(e0, vec3(0.0, 1.0, 0.0)).unwrap();
+    let e2 = smesh.extrude_edge(e1, vec3(0.0, 0.5, -0.4)).unwrap();
+    let e3 = smesh.extrude_edge(e2, vec3(0.0, 0.3, -0.4)).unwrap();
+
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(smesh)),
+        material: materials.add(StandardMaterial::from(Color::rgb(0.4, 0.4, 1.0))),
+        transform: Transform::from_translation(vec3(2.2, 0.0, 0.0)),
+        ..default()
+    });
+
+    // Extrude faces test
+    let mut smesh = SMesh::new();
+    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+    let v1 = smesh.add_vertex(vec3(-1.0, -1.0, 1.0));
+    let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
+    let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+
+    let f0 = smesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+    smesh.extrude_faces(vec![f0], 1.0).unwrap();
+
+    commands.spawn(PbrBundle {
+        mesh: meshes.add(Mesh::from(smesh)),
+        material: materials.add(StandardMaterial::from(Color::rgb(0.8, 0.8, 0.8))),
+        transform: Transform::from_translation(vec3(-2.2, 0.0, 0.0)),
+        ..default()
+    });
     // Light
     commands.spawn(PointLightBundle {
         transform: Transform::from_translation(vec3(3.0, 3.0, 4.0)),
