@@ -1,4 +1,7 @@
-use bevy::prelude::*;
+use bevy::{
+    color::palettes::css::{BLACK, GREEN, ORANGE_RED, TURQUOISE, WHITE, YELLOW},
+    prelude::*,
+};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
@@ -71,11 +74,11 @@ fn debug_draw_smesh(
     for (v_id, v) in mesh.vertices().iter() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
         let color = if debug_smesh.selection == Selection::Vertex(v_id) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::GREEN
+            GREEN
         };
-        gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
+        gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, Color::from(color));
     }
     // Halfedges
     for (he_id, he) in mesh.halfedges().iter() {
@@ -86,17 +89,17 @@ fn debug_draw_smesh(
         let v_src_pos = t.transform_point(*mesh.positions.get(v_src?).unwrap());
         let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst?).unwrap());
         let color = if debug_smesh.selection == Selection::Halfedge(he_id) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::TURQUOISE
+            TURQUOISE
         };
-        draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color);
+        draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color.into());
         let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::TURQUOISE
+            TURQUOISE
         };
-        draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
+        draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color.into());
     }
     // Faces
     for face_id in mesh.faces().keys() {
@@ -109,9 +112,9 @@ fn debug_draw_smesh(
             .unwrap();
         let center = t.transform_point(sum / count as f32);
         let color = if debug_smesh.selection == Selection::Face(face_id) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::YELLOW
+            YELLOW
         };
         gizmos.sphere(center, Quat::IDENTITY, 0.02, color);
     }
@@ -270,9 +273,9 @@ fn update_ui_system(
 
 fn main() {
     App::new()
-        .insert_resource(ClearColor(Color::BLACK))
+        .insert_resource(ClearColor(BLACK.into()))
         .insert_resource(AmbientLight {
-            color: Color::WHITE,
+            color: WHITE.into(),
             brightness: 0.3,
         })
         .insert_resource(Msaa::Sample4)
