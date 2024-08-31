@@ -13,43 +13,11 @@ pub mod attribute;
 pub mod edit_operations;
 pub mod error;
 pub mod iterators;
+pub mod loops;
 pub mod mesh_query;
+pub mod model;
+pub mod selection;
 pub mod topological_operations;
-
-new_key_type! { pub struct VertexId; }
-new_key_type! { pub struct HalfedgeId; }
-new_key_type! { pub struct FaceId; }
-
-#[derive(Debug, Default, Clone)]
-pub struct Vertex {
-    pub halfedge: Option<HalfedgeId>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Halfedge {
-    pub vertex: VertexId,
-    pub face: Option<FaceId>,
-    pub opposite: Option<HalfedgeId>,
-    pub prev: Option<HalfedgeId>,
-    pub next: Option<HalfedgeId>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Edge {
-    pub halfedge: Option<HalfedgeId>,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Face {
-    pub halfedge: Option<HalfedgeId>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct Connectivity {
-    pub vertices: SlotMap<VertexId, Vertex>,
-    pub halfedges: SlotMap<HalfedgeId, Halfedge>,
-    pub faces: SlotMap<FaceId, Face>,
-}
 
 impl Connectivity {
     pub fn vert_mut(&mut self, id: VertexId) -> Result<&mut Vertex, SMeshError> {
@@ -65,20 +33,6 @@ impl Connectivity {
     pub fn face_mut(&mut self, id: FaceId) -> Result<&mut Face, SMeshError> {
         self.faces.get_mut(id).ok_or(FaceNotFound(id))
     }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct SMesh {
-    pub connectivity: Connectivity,
-
-    // Attributes
-    pub positions: SecondaryMap<VertexId, Vec3>,
-    pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
-    pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
-    pub uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
-    vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
-    edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
-    face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
 }
 
 /// Init, Getters

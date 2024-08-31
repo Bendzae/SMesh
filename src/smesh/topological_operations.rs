@@ -105,6 +105,7 @@ impl SMesh {
         if let Ok(f) = h.opposite().face().run(self) {
             self.delete_face(f)?;
         }
+        let _ = self.get_mut(h).delete();
         Ok(())
     }
 
