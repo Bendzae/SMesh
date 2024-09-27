@@ -3,9 +3,7 @@ use core::f32;
 use glam::{i32, Vec2, Vec3};
 use slotmap::SecondaryMap;
 
-use crate::{
-    bail, prelude::{mesh::SMesh, mesh_elements::VertexId, SMeshError},
-};
+use crate::{bail, prelude::*};
 
 #[derive(Debug, Clone)]
 pub enum MeshAttribute {
@@ -217,9 +215,10 @@ impl SMesh {
 
 #[cfg(test)]
 mod test {
+    use attribute::*;
     use glam::vec3;
 
-    use crate::prelude::{attribute::CustomAttributeMapOps, mesh::SMesh, mesh_elements::VertexId};
+    use crate::prelude::*;
 
     #[test]
     fn basic_integer() {

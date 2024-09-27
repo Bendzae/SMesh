@@ -46,7 +46,7 @@ impl SMesh {
 
         for (face_id, _face) in self.faces() {
             let face_normal = self.face_normals.as_ref().map(|n| n[face_id]);
-            let vertices: Vec<VertexId> = face_id.vertices(&self).collect();
+            let vertices: Vec<VertexId> = face_id.vertices(self).collect();
 
             let v1 = vertices[0];
 

@@ -1,5 +1,4 @@
-use crate::prelude::SMeshResult;
-use crate::smesh::SMesh;
+use crate::prelude::*;
 use glam::vec3;
 
 pub fn vertex_onering() -> SMeshResult<SMesh> {

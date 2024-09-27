@@ -1,5 +1,6 @@
-use crate::smesh::iterators::*;
-use crate::smesh::*;
+use itertools::Itertools;
+
+use crate::{bail, prelude::*};
 
 ///
 /// Higher-level Topological Operations

@@ -1,20 +1,11 @@
-use bevy::{a11y::accesskit::Vec2, utils::HashMap};
-use glam::Vec3;
+use std::collections::HashMap;
+
+use attribute::CustomAttributeMap;
+use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{SecondaryMap, SlotMap};
 
-use crate::{
-    bail,
-    prelude::{
-        attribute::CustomAttributeMap,
-        model::{
-            connectivity::Connectivity,
-            mesh_elements::{Face, FaceId, Halfedge, HalfedgeId, Vertex, VertexId},
-        },
-        error::SMeshError,
-        SMeshResult,
-    },
-};
+use crate::{bail, prelude::*};
 
 #[derive(Debug, Clone, Default)]
 pub struct SMesh {
@@ -25,9 +16,9 @@ pub struct SMesh {
     pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
     pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
     pub uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
-    vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
-    edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
-    face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
+    pub vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
+    pub edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
+    pub face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
 }
 
 /// Init, Getters

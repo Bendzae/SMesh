@@ -1,3 +1,6 @@
+use crate::prelude::model::connectivity::*;
+use crate::prelude::model::mesh::*;
+use crate::prelude::model::mesh_elements::*;
 use crate::smesh::mesh_query::*;
 use crate::smesh::*;
 

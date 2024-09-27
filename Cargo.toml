@@ -6,7 +6,6 @@ authors = ["Ben Dzaebel <ben@bendz.dev>"]
 hompage = "bendz.dev"
 license = "MIT"
 repository = "https://github.com/Bendzae/SMesh"
-categories = ["3D graphics", "mesh manipulation"]
 keywords = ["mesh", "halfedge", "procedural", "polygon", "3D"]
 description = "A fast and ergonomic surface-mesh/halfedge-mesh implementation and polygon mesh manipulation library based on pmp"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -18,14 +17,14 @@ itertools = "0.13.0"
 thiserror = "1.0.61"
 
 # Adapter dependencies
-bevy = { version = "0.14.1", default-features = false, features = [
+bevy = { version = "0.14", default-features = false, features = [
   "bevy_pbr",
 ], optional = true }
 
 [dev-dependencies]
-bevy = "0.14.1"
+bevy = "0.14.2"
 bevy_panorbit_camera = "0.19.3"
-bevy-inspector-egui = "0.25.2"
+bevy-inspector-egui = "0.26"
 
 
 [features]

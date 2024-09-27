@@ -1,14 +1,7 @@
 use glam::Vec3;
 use itertools::Itertools;
 
-use crate::{
-    bail,
-    prelude::{
-        FaceIterators, HalfedgeOps, RunQuery, SMesh, SMeshError, SMeshResult, VertexId,
-        VertexIterators, VertexOps,
-    },
-    smesh::{Face, FaceId, Halfedge, HalfedgeId},
-};
+use crate::{bail, prelude::*};
 
 impl SMesh {
     pub fn extrude_vertex(&mut self, v0: VertexId, direction: Vec3) -> SMeshResult<VertexId> {
