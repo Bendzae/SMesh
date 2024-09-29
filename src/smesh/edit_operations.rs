@@ -4,18 +4,7 @@ use itertools::Itertools;
 use crate::{bail, prelude::*};
 
 impl SMesh {
-    pub fn extrude_vertex(&mut self, v0: VertexId, direction: Vec3) -> SMeshResult<VertexId> {
-        if let Some(pos) = self.positions.get(v0) {
-            let new_pos = *pos + direction;
-            let v1 = self.add_vertex(new_pos);
-            self.add_edge(v0, v1);
-            Ok(v1)
-        } else {
-            bail!("Position attribute needs to be set for extrusion")
-        }
-    }
-
-    pub fn extrude_edge(&mut self, e0: HalfedgeId, direction: Vec3) -> SMeshResult<HalfedgeId> {
+    pub fn extrude_edge(&mut self, e0: HalfedgeId) -> SMeshResult<HalfedgeId> {
         // Find boundary halfedge
         let e0 = match e0.is_boundary(self) {
             true => e0,
@@ -31,11 +20,25 @@ impl SMesh {
         let v0 = e0.src_vert().run(self)?;
         let v1 = e0.dst_vert().run(self)?;
 
-        let v0_new = self.extrude_vertex(v0, direction)?;
-        let v1_new = self.extrude_vertex(v1, direction)?;
+        let pos0 = self
+            .positions
+            .get(v0)
+            .ok_or(SMeshError::CustomError(
+                "Extrude edge: vertex has no position",
+            ))?
+            .clone();
+        let pos1 = self
+            .positions
+            .get(v1)
+            .ok_or(SMeshError::CustomError(
+                "Extrude edge: vertex has no position",
+            ))?
+            .clone();
+        let v0_new = self.add_vertex(pos0);
+        let v1_new = self.add_vertex(pos1);
 
         // TODO: maybe check vertex normals (if exist) to determine order?
-        self.add_face(vec![v0, v1, v1_new, v0_new])?;
+        self.make_face(vec![v0, v1, v1_new, v0_new])?;
         let new_edge = v0_new.halfedge_to(v1_new).run(self)?;
         Ok(new_edge)
     }
@@ -48,8 +51,8 @@ impl SMesh {
         let mut new_vertices = Vec::new();
 
         for v0 in vertices.iter() {
-            let v1 = self.extrude_vertex(*v0, direction)?;
-            new_vertices.push(v1);
+            // let v1 = self.extrude_vertex(*v0, direction)?;
+            // new_vertices.push(v1);
         }
 
         for v0 in vertices.iter() {

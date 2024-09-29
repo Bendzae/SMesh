@@ -206,8 +206,8 @@ mod test {
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
 
-        let _ = mesh.add_face(vec![v0, v1, v2, v3]);
-        let _ = mesh.add_face(vec![v0, v4, v1]);
+        let _ = mesh.make_face(vec![v0, v1, v2, v3]);
+        let _ = mesh.make_face(vec![v0, v4, v1]);
 
         let mut ids = vec![];
         for v_id in v0.vertices(mesh) {
@@ -234,8 +234,8 @@ mod test {
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
 
-        let f0 = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
-        let f1 = mesh.add_face(vec![v0, v4, v1]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2, v3]).unwrap();
+        let f1 = mesh.make_face(vec![v0, v4, v1]).unwrap();
 
         let mut ids = f0.vertices(mesh).collect_vec();
         assert_eq!(ids, vec![v0, v1, v2, v3]);

@@ -22,17 +22,17 @@ fn init_system(
     let v7 = smesh.add_vertex(vec3(-1.0, 1.0, -1.0));
 
     // Front
-    smesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+    smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
     // Right
-    smesh.add_face(vec![v1, v5, v6, v2]).unwrap();
+    smesh.make_face(vec![v1, v5, v6, v2]).unwrap();
     // Back
-    smesh.add_face(vec![v5, v4, v7, v6]).unwrap();
+    smesh.make_face(vec![v5, v4, v7, v6]).unwrap();
     // Left
-    smesh.add_face(vec![v4, v0, v3, v7]).unwrap();
+    smesh.make_face(vec![v4, v0, v3, v7]).unwrap();
     // Top
-    smesh.add_face(vec![v3, v2, v6, v7]).unwrap();
+    smesh.make_face(vec![v3, v2, v6, v7]).unwrap();
     // Bottom
-    smesh.add_face(vec![v4, v5, v1, v0]).unwrap();
+    smesh.make_face(vec![v4, v5, v1, v0]).unwrap();
 
     let v = smesh.add_vertex(vec3(0.0, 1.3, 0.3));
 
@@ -51,10 +51,13 @@ fn init_system(
     let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
     let v1 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
 
-    let (e0, _) = smesh.add_edge(v0, v1);
-    let e1 = smesh.extrude_edge(e0, vec3(0.0, 1.0, 0.0)).unwrap();
-    let e2 = smesh.extrude_edge(e1, vec3(0.0, 0.5, -0.4)).unwrap();
-    let e3 = smesh.extrude_edge(e2, vec3(0.0, 0.3, -0.4)).unwrap();
+    let (e0, _) = smesh.make_edge_from_isolated(v0, v1);
+    let e1 = smesh.extrude_edge(e0).unwrap();
+    smesh.translate(e1, vec3(0.0, 1.0, 0.0)).unwrap();
+    let e2 = smesh.extrude_edge(e1).unwrap();
+    smesh.translate(e2, vec3(0.0, 0.5, -0.4)).unwrap();
+    let e3 = smesh.extrude_edge(e2).unwrap();
+    smesh.translate(e3, vec3(0.0, 0.3, -0.4)).unwrap();
 
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(smesh)),
@@ -64,21 +67,21 @@ fn init_system(
     });
 
     // Extrude faces test
-    let mut smesh = SMesh::new();
-    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
-    let v1 = smesh.add_vertex(vec3(-1.0, -1.0, 1.0));
-    let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
-    let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
-
-    let f0 = smesh.add_face(vec![v0, v1, v2, v3]).unwrap();
-    smesh.extrude_faces(vec![f0], 1.0).unwrap();
-
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(smesh)),
-        material: materials.add(StandardMaterial::from(Color::rgb(0.8, 0.8, 0.8))),
-        transform: Transform::from_translation(vec3(-2.2, 0.0, 0.0)),
-        ..default()
-    });
+    // let mut smesh = SMesh::new();
+    // let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+    // let v1 = smesh.add_vertex(vec3(-1.0, -1.0, 1.0));
+    // let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
+    // let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+    //
+    // let f0 = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
+    // smesh.extrude_faces(vec![f0], 1.0).unwrap();
+    //
+    // commands.spawn(PbrBundle {
+    //     mesh: meshes.add(Mesh::from(smesh)),
+    //     material: materials.add(StandardMaterial::from(Color::rgb(0.8, 0.8, 0.8))),
+    //     transform: Transform::from_translation(vec3(-2.2, 0.0, 0.0)),
+    //     ..default()
+    // });
     // Light
     commands.spawn(PointLightBundle {
         transform: Transform::from_translation(vec3(3.0, 3.0, 4.0)),

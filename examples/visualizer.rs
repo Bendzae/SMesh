@@ -1,3 +1,4 @@
+use bevy::color::palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW};
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
@@ -31,8 +32,8 @@ fn init_system(mut commands: Commands) {
     let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
     let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
-    let _ = mesh.add_face(vec![v0, v1, v2, v3]);
-    let _ = mesh.add_face(vec![v0, v4, v1]);
+    let _ = mesh.make_face(vec![v0, v1, v2, v3]);
+    let _ = mesh.make_face(vec![v0, v4, v1]);
 
     let v0 = mesh.vertices().keys().next().unwrap();
 
@@ -52,16 +53,15 @@ fn init_system(mut commands: Commands) {
     let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
     let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
 
-    let f0 = smesh.add_face(vec![v0, v1, v2, v3]).unwrap();
-    smesh.extrude_faces(vec![f0], 1.0).unwrap();
-    
+    let f0 = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
+    // smesh.extrude_faces(vec![f0], 1.0).unwrap();
 
     commands.spawn((
         DebugRenderSMesh {
             mesh: smesh,
             selection: Selection::Vertex(v0),
         },
-       TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
+        TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
     ));
     // Camera
     commands.spawn((
@@ -90,9 +90,9 @@ fn debug_draw_smesh(
     for (v_id, v) in mesh.vertices().iter() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
         let color = if debug_smesh.selection == Selection::Vertex(v_id) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::GREEN
+            GREEN
         };
         gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
     }
@@ -105,9 +105,9 @@ fn debug_draw_smesh(
         let v_src_pos = t.transform_point(*mesh.positions.get(v_src?).unwrap());
         let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst?).unwrap());
         let color = if debug_smesh.selection == Selection::Halfedge(he_id) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::TURQUOISE
+            TURQUOISE
         };
         draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color);
         // let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
@@ -128,16 +128,16 @@ fn debug_draw_smesh(
             .unwrap();
         let center = t.transform_point(sum / count as f32);
         let color = if debug_smesh.selection == Selection::Face(face_id) {
-            Color::ORANGE_RED
+            ORANGE_RED
         } else {
-            Color::YELLOW
+            YELLOW
         };
         gizmos.sphere(center, Quat::IDENTITY, 0.02, color);
     }
     Ok(())
 }
 
-fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
+fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Srgba) {
     let dir = (v1 - v0).normalize();
     let normal = Vec3::Y; // TODO
     let offset = dir.cross(normal) * 0.05;

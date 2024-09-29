@@ -389,7 +389,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
+        let face_id = mesh.make_face(vec![v0, v1, v2, v3]);
 
         assert!(face_id.is_ok());
 
@@ -414,7 +414,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
+        let face_id = mesh.make_face(vec![v0, v1, v2, v3]);
 
         assert!(face_id.is_ok());
 
@@ -434,7 +434,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3])?;
+        let face_id = mesh.make_face(vec![v0, v1, v2, v3])?;
 
         assert_eq!(face_id.valence(mesh), 4);
         assert_eq!(v0.valence(mesh), 2);
@@ -451,7 +451,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        mesh.add_face(vec![v0, v1, v2, v3])?;
+        mesh.make_face(vec![v0, v1, v2, v3])?;
 
         assert!(v0.is_manifold(mesh));
         assert!(v3.is_manifold(mesh));

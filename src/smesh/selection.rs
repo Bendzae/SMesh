@@ -1,79 +1,101 @@
 use std::collections::HashSet;
 
-use crate::{
-    bail,
-    prelude::{FaceId, HalfedgeId, SMesh, SMeshError, SMeshResult, VertexId},
-};
+use crate::{bail, prelude::*};
+use bevy::utils::default;
 
-#[derive(Debug, Clone)]
-pub struct Selection<'a, T> {
-    smesh: &'a SMesh,
-    elements: HashSet<T>,
+use super::mesh_query::{HalfedgeOps, RunQuery};
+
+#[derive(Debug, Clone, Default)]
+pub struct MeshSelection {
+    vertices: HashSet<VertexId>,
+    halfedges: HashSet<HalfedgeId>,
+    faces: HashSet<FaceId>,
 }
 
-impl<'a, T> Selection<'a, T>
-where
-    T: Clone,
-    Selection<'a, T>: SelectionOps<T>,
-{
-    pub fn new(smesh: &'a SMesh) -> Self {
-        Self {
-            smesh,
-            elements: HashSet::new(),
+impl MeshSelection {
+    pub fn new() -> Self {
+        MeshSelection::default()
+    }
+
+    pub fn resolve_to_vertices(&self, smesh: &SMesh) -> SMeshResult<HashSet<VertexId>> {
+        let mut vertices = self.vertices.clone();
+        for he in &self.halfedges {
+            vertices.insert(he.src_vert().run(smesh)?);
+            vertices.insert(he.dst_vert().run(smesh)?);
         }
-    }
-
-    pub fn elements(&self) -> &HashSet<T> {
-        &self.elements
-    }
-
-    pub fn add_all(&mut self, ids: Vec<T>) -> SMeshResult<()> {
-        for id in ids.iter() {
-            self.add(id.clone())?;
+        for f in &self.faces {
+            for v in f.vertices(smesh) {
+                vertices.insert(v);
+            }
         }
-        Ok(())
+        Ok(vertices)
     }
 }
 
-pub trait SelectionOps<T> {
-    fn add(&mut self, id: T) -> SMeshResult<()>;
-}
-
-impl SelectionOps<VertexId> for Selection<'_, VertexId> {
-    fn add(&mut self, id: VertexId) -> SMeshResult<()> {
-        if !self.smesh.vertices().contains_key(id) {
-            bail!(VertexNotFound, id);
-        }
-        self.elements.insert(id);
-        Ok(())
+impl From<VertexId> for MeshSelection {
+    fn from(value: VertexId) -> Self {
+        Self::from_iter(vec![value])
     }
 }
 
-impl SelectionOps<HalfedgeId> for Selection<'_, HalfedgeId> {
-    fn add(&mut self, id: HalfedgeId) -> SMeshResult<()> {
-        if !self.smesh.halfedges().contains_key(id) {
-            bail!(HalfedgeNotFound, id);
-        }
-        self.elements.insert(id);
-        Ok(())
+impl From<HalfedgeId> for MeshSelection {
+    fn from(value: HalfedgeId) -> Self {
+        Self::from_iter(vec![value])
     }
 }
 
-impl<'a> Selection<'a, HalfedgeId> {
-    pub fn to_vertex_selection(self) -> Selection<'a, VertexId> {
-        Selection {
-            smesh: self.smesh,
-            elements: HashSet::new(),
+impl From<FaceId> for MeshSelection {
+    fn from(value: FaceId) -> Self {
+        Self::from_iter(vec![value])
+    }
+}
+
+impl FromIterator<VertexId> for MeshSelection {
+    fn from_iter<T: IntoIterator<Item = VertexId>>(iter: T) -> Self {
+        MeshSelection {
+            vertices: HashSet::from_iter(iter),
+            ..default()
         }
     }
 }
 
-impl SelectionOps<FaceId> for Selection<'_, FaceId> {
-    fn add(&mut self, id: FaceId) -> SMeshResult<()> {
-        if !self.smesh.faces().contains_key(id) {
-            bail!(FaceNotFound, id);
+impl FromIterator<HalfedgeId> for MeshSelection {
+    fn from_iter<T: IntoIterator<Item = HalfedgeId>>(iter: T) -> Self {
+        MeshSelection {
+            halfedges: HashSet::from_iter(iter),
+            ..default()
         }
-        self.elements.insert(id);
-        Ok(())
     }
 }
+
+impl FromIterator<FaceId> for MeshSelection {
+    fn from_iter<T: IntoIterator<Item = FaceId>>(iter: T) -> Self {
+        MeshSelection {
+            faces: HashSet::from_iter(iter),
+            ..default()
+        }
+    }
+}
+
+macro_rules! impl_from_for_mesh_selection {
+    ($type:ident) => {
+        impl From<$type<VertexId>> for MeshSelection {
+            fn from(value: $type<VertexId>) -> Self {
+                Self::from_iter(value)
+            }
+        }
+        impl From<$type<HalfedgeId>> for MeshSelection {
+            fn from(value: $type<HalfedgeId>) -> Self {
+                Self::from_iter(value)
+            }
+        }
+        impl From<$type<FaceId>> for MeshSelection {
+            fn from(value: $type<FaceId>) -> Self {
+                Self::from_iter(value)
+            }
+        }
+    };
+}
+
+impl_from_for_mesh_selection!(Vec);
+impl_from_for_mesh_selection!(HashSet);

@@ -9,7 +9,7 @@ use crate::{bail, prelude::*};
 
 #[derive(Debug, Clone, Default)]
 pub struct SMesh {
-    pub connectivity: Connectivity,
+    pub(crate) connectivity: Connectivity,
 
     // Attributes
     pub positions: SecondaryMap<VertexId, Vec3>,
@@ -80,45 +80,30 @@ impl SMesh {
         id
     }
 
-    /// Create an edge (2 halfedges) between two isolated vertices
-    /// CARE!: This does not take care of connectivity for next/prev edges
-    pub fn add_edge(&mut self, v0: VertexId, v1: VertexId) -> (HalfedgeId, HalfedgeId) {
-        let halfedges = self.halfedges_mut();
-        let he_0_id = halfedges.insert(Halfedge::default());
-        let he_1_id = halfedges.insert(Halfedge::default());
-        let he_0 = halfedges.get_mut(he_0_id).unwrap();
-        he_0.vertex = v1;
-        he_0.opposite = Some(he_1_id);
-        let he_1 = halfedges.get_mut(he_1_id).unwrap();
-        he_1.vertex = v0;
-        he_1.opposite = Some(he_0_id);
-        (he_0_id, he_1_id)
-    }
-
     /// Construct a triangle from the given vertices
-    pub fn add_triangle(
+    pub fn make_triangle(
         &mut self,
         v0: VertexId,
         v1: VertexId,
         v2: VertexId,
     ) -> SMeshResult<FaceId> {
-        self.add_face(vec![v0, v1, v2])
+        self.make_face(vec![v0, v1, v2])
     }
 
     /// Construct a quad from the given vertices
-    pub fn add_quad(
+    pub fn make_quad(
         &mut self,
         v0: VertexId,
         v1: VertexId,
         v2: VertexId,
         v3: VertexId,
     ) -> SMeshResult<FaceId> {
-        self.add_face(vec![v0, v1, v2, v3])
+        self.make_face(vec![v0, v1, v2, v3])
     }
 
     /// Construct a new face from a list of existing vertices
     /// Takes care of connectivity
-    pub fn add_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
+    pub fn make_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
         let n = vertices.len();
         if n < 3 {
             bail!(DefaultError);
@@ -144,7 +129,7 @@ impl SMesh {
                 Err(_) => {
                     // New halfedge
                     // TODO: Check if only one he should be added here?
-                    let (he_id, _) = self.add_edge(*v0, *v1);
+                    let (he_id, _) = self.make_edge_from_isolated(*v0, *v1);
                     halfedeges.push((he_id, true));
                 }
             }
@@ -250,6 +235,25 @@ impl SMesh {
         }
 
         Ok(face_id)
+    }
+
+    /// Create an edge (2 halfedges) between two isolated vertices
+    /// CARE!: This does not take care of connectivity for next/prev edges
+    pub fn make_edge_from_isolated(
+        &mut self,
+        v0: VertexId,
+        v1: VertexId,
+    ) -> (HalfedgeId, HalfedgeId) {
+        let halfedges = self.halfedges_mut();
+        let he_0_id = halfedges.insert(Halfedge::default());
+        let he_1_id = halfedges.insert(Halfedge::default());
+        let he_0 = halfedges.get_mut(he_0_id).unwrap();
+        he_0.vertex = v1;
+        he_0.opposite = Some(he_1_id);
+        let he_1 = halfedges.get_mut(he_1_id).unwrap();
+        he_1.vertex = v0;
+        he_1.opposite = Some(he_0_id);
+        (he_0_id, he_1_id)
     }
 }
 

@@ -60,7 +60,7 @@ mod smesh_tests {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.5, 1.5, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2, v3, v4]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2, v3, v4]).unwrap();
         assert_eq!(mesh.vertices().len(), 5);
         assert_eq!(mesh.halfedges().len(), 10);
         assert_eq!(mesh.faces().len(), 1);
@@ -148,7 +148,7 @@ mod smesh_tests {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.5, 1.5, 0.0));
-        mesh.add_face(vec![v0, v1, v2, v3, v4]).unwrap();
+        mesh.make_face(vec![v0, v1, v2, v3, v4]).unwrap();
         assert!(!mesh.is_triangle_mesh());
         assert!(!mesh.is_quad_mesh());
     }
@@ -203,7 +203,7 @@ mod smesh_tests {
         let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
         let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
         let v2 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2]).unwrap();
         (v0, v1, v2, f0)
     }
 
@@ -212,8 +212,8 @@ mod smesh_tests {
         let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
         let v2 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2]).unwrap();
-        let f2 = mesh.add_face(vec![v1, v3, v2]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2]).unwrap();
+        let f2 = mesh.make_face(vec![v1, v3, v2]).unwrap();
         (v0, v1, v2, v3, f0, f2)
     }
 
@@ -222,7 +222,7 @@ mod smesh_tests {
         let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2, v3]).unwrap();
         (v0, v1, v2, v3, f0)
     }
 }
