@@ -68,6 +68,7 @@ impl<'a> Iterator for FaceAroundVertexIter<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct VertexAroundFaceIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -88,6 +89,7 @@ impl<'a> Iterator for VertexAroundFaceIter<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HalfedgeAroundFaceIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,

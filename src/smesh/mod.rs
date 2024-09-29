@@ -19,4 +19,5 @@ pub mod model;
 pub mod selection;
 pub mod topological_operations;
 pub mod transform;
+pub mod util;
 
