@@ -89,12 +89,11 @@ fn debug_draw_smesh_system(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut 
 fn debug_draw_smesh(
     debug_smesh: &DebugRenderSMesh,
     t: &Transform,
-    mut gizmos: &mut Gizmos,
+    gizmos: &mut Gizmos,
 ) -> SMeshResult<()> {
     let mesh = &debug_smesh.mesh;
     // Verts
-    let vertex_normals = mesh.vertex_normals.clone().unwrap();
-    for (v_id, v) in mesh.vertices().iter() {
+    for (v_id, _v) in mesh.vertices().iter() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
         let color = if debug_smesh.selection == Selection::Vertex(v_id) {
             ORANGE_RED
@@ -102,16 +101,11 @@ fn debug_draw_smesh(
             GREEN
         };
         gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
-        gizmos.arrow(
-            v_pos,
-            v_pos + *vertex_normals.get(v_id).unwrap() * 0.2,
-            color,
-        );
+        gizmos.arrow(v_pos, v_pos + v_id.normal(mesh)? * 0.2, color);
     }
     // Halfedges
-    for (he_id, he) in mesh.halfedges().iter() {
+    for (he_id, _he) in mesh.halfedges().iter() {
         let he = he_id;
-        let opposite = he.opposite().run(mesh);
         let v_src = he.src_vert().run(mesh)?;
         let v_dst = he.dst_vert().run(mesh)?;
         let v_src_pos = t.transform_point(*mesh.positions.get(v_src).unwrap());
@@ -121,10 +115,8 @@ fn debug_draw_smesh(
         } else {
             TURQUOISE
         };
-        let edge_normal =
-            ((*vertex_normals.get(v_src).unwrap() + *vertex_normals.get(v_dst).unwrap()) / 2.0)
-                .normalize();
-        draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, edge_normal, color);
+        let edge_normal = ((v_src.normal(mesh)? + v_dst.normal(mesh)?) / 2.0).normalize();
+        draw_halfedge(gizmos, v_src_pos, v_dst_pos, edge_normal, color);
         // let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
         //     Color::ORANGE_RED
         // } else {
@@ -133,7 +125,6 @@ fn debug_draw_smesh(
         // draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
     }
     // Faces
-    let face_normals = mesh.face_normals.clone().unwrap();
     for face_id in mesh.faces().keys() {
         let vertex_positions = face_id
             .vertices(mesh)
@@ -147,11 +138,7 @@ fn debug_draw_smesh(
             YELLOW
         };
         gizmos.sphere(center, Quat::IDENTITY, 0.02, color);
-        gizmos.arrow(
-            center,
-            center + *face_normals.get(face_id).unwrap() * 0.3,
-            color,
-        );
+        gizmos.arrow(center, center + face_id.normal(mesh)? * 0.3, color);
     }
     Ok(())
 }
