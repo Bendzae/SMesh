@@ -23,9 +23,9 @@ impl SMesh {
             let v1 = face_vertices.get(1).unwrap();
             let v2 = face_vertices.get(2).unwrap();
 
-            let p0 = *self.positions.get(*v0).unwrap();
-            let p1 = *self.positions.get(*v1).unwrap();
-            let p2 = *self.positions.get(*v2).unwrap();
+            let p0 = v0.position(self)?;
+            let p1 = v1.position(self)?;
+            let p2 = v2.position(self)?;
 
             // Compute two edge vectors
             let edge1 = p1 - p0;

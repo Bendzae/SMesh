@@ -15,7 +15,7 @@ pub struct SMesh {
     pub positions: SecondaryMap<VertexId, Vec3>,
     pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
     pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
-    pub uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
+    pub uvs: Option<SecondaryMap<VertexId, Vec2>>,
     pub vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
     pub edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
     pub face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,

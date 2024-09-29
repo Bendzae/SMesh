@@ -56,9 +56,9 @@ impl SMesh {
                 positions.push(self.positions[v3]);
 
                 if let Some(mesh_uvs) = self.uvs.as_ref() {
-                    uvs.push(mesh_uvs[v1.halfedge().run(self)?]);
-                    uvs.push(mesh_uvs[v2.halfedge().run(self)?]);
-                    uvs.push(mesh_uvs[v3.halfedge().run(self)?]);
+                    uvs.push(mesh_uvs[v1]);
+                    uvs.push(mesh_uvs[v2]);
+                    uvs.push(mesh_uvs[v3]);
                 }
                 if let Some(normal) = face_normal {
                     normals.push(normal);

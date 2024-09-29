@@ -20,20 +20,8 @@ impl SMesh {
         let v0 = e0.src_vert().run(self)?;
         let v1 = e0.dst_vert().run(self)?;
 
-        let pos0 = self
-            .positions
-            .get(v0)
-            .ok_or(SMeshError::CustomError(
-                "Extrude edge: vertex has no position",
-            ))?
-            .clone();
-        let pos1 = self
-            .positions
-            .get(v1)
-            .ok_or(SMeshError::CustomError(
-                "Extrude edge: vertex has no position",
-            ))?
-            .clone();
+        let pos0 = v0.position(self)?;
+        let pos1 = v1.position(self)?;
         let v0_new = self.add_vertex(pos0);
         let v1_new = self.add_vertex(pos1);
 
