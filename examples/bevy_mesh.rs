@@ -54,7 +54,16 @@ fn init_system(
     let (e0, _) = smesh.make_edge_from_isolated(v0, v1);
     let (e1, _) = smesh.make_edge_from_isolated(v1, v2);
     let edges = smesh.extrude_edge_chain(vec![e0, e1]).unwrap();
-    smesh.translate(edges, vec3(0.0, 1.0, 0.0)).unwrap();
+    smesh.translate(edges.clone(), vec3(0.0, 1.0, 0.0)).unwrap();
+    smesh
+        .scale_around_cog(edges.clone(), Vec3::splat(0.6))
+        .unwrap();
+    let edges = smesh.extrude_edge_chain(edges).unwrap();
+    smesh.translate(edges.clone(), vec3(0.0, 1.2, 0.0)).unwrap();
+    smesh
+        .scale_around_cog(edges.clone(), Vec3::splat(0.8))
+        .unwrap();
+
     // let e2 = smesh.extrude_edge(e1).unwrap();
     // smesh.translate(e2, vec3(0.0, 0.5, -0.4)).unwrap();
     // let e3 = smesh.extrude_edge(e2).unwrap();
