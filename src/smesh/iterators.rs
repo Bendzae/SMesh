@@ -110,7 +110,9 @@ impl<'a> Iterator for HalfedgeAroundFaceIter<'a> {
 }
 
 pub trait VertexIterators {
+    /// Iterates over connected/neighbouring vertices in a counter clockwise direction
     fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter;
+    /// Iterates over outgoing halfedges in a counter clockwise direction
     fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter;
     fn faces(self, mesh: &SMesh) -> FaceAroundVertexIter;
 }

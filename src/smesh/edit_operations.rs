@@ -1,5 +1,7 @@
+use bevy::{log::info, reflect::List};
 use glam::Vec3;
 use itertools::Itertools;
+use model::mesh;
 
 use crate::{bail, prelude::*};
 
@@ -29,6 +31,57 @@ impl SMesh {
         self.make_face(vec![v0, v1, v1_new, v0_new])?;
         let new_edge = v0_new.halfedge_to(v1_new).run(self)?;
         Ok(new_edge)
+    }
+
+    pub fn extrude_edge_chain(&mut self, edges: Vec<HalfedgeId>) -> SMeshResult<Vec<HalfedgeId>> {
+        let mut boundary_edges = Vec::new();
+        for e in edges {
+            let eb = match e.is_boundary(self) {
+                true => e,
+                false => {
+                    let opposite = e.opposite().run(self)?;
+                    if !opposite.is_boundary(self) {
+                        bail!("Can only extrude boundary edges");
+                    }
+                    opposite
+                }
+            };
+            boundary_edges.push(eb);
+        }
+
+        // Assert all are connected in sequence
+        // TODO
+        let vertices = boundary_edges
+            .iter()
+            .flat_map(|e| {
+                vec![
+                    e.src_vert().run(self).unwrap(),
+                    e.dst_vert().run(self).unwrap(),
+                ]
+            })
+            .collect_vec();
+        // Duplicate verts
+        let mut vertex_pairs = Vec::new();
+        for v in &vertices {
+            let position = v.position(self)?;
+            vertex_pairs.push((*v, self.add_vertex(position)));
+        }
+
+        assert_eq!(vertices.len(), vertex_pairs.len());
+
+        // Make faces
+        let mut new_edges = Vec::new();
+        for ((old_0, new_0), (old_1, new_1)) in vertex_pairs
+            .iter()
+            .copied()
+            .circular_tuple_windows()
+            .take(vertex_pairs.len() - 1)
+        {
+            info!("{:?} {:?} {:?} {:?}", old_0, new_0, old_1, new_1);
+            self.make_quad(old_0, old_1, new_1, new_0)?;
+            new_edges.push((new_0).halfedge_to(new_1).run(self)?);
+        }
+        Ok(new_edges)
     }
 
     pub fn extrude_vertices(
