@@ -1,8 +1,27 @@
-use bevy::math::VectorSpace;
-use glam::Vec3;
+use crate::{bail, prelude::*};
+use glam::{Quat, Vec3};
+use itertools::Itertools;
 use selection::MeshSelection;
 
-use crate::{bail, prelude::*};
+pub enum Pivot {
+    Zero,
+    MeshCog,
+    SelectionCog,
+    Local(Vec3),
+}
+
+impl Pivot {
+    fn calculate<S: Into<MeshSelection>>(&self, mesh: &SMesh, selection: S) -> SMeshResult<Vec3> {
+        Ok(match self {
+            Pivot::Zero => Vec3::ZERO,
+            Pivot::MeshCog => {
+                mesh.center_of_gravity(mesh.vertices().iter().map(|(id, _)| id).collect_vec())?
+            }
+            Pivot::SelectionCog => mesh.center_of_gravity(selection)?,
+            Pivot::Local(pos) => *pos,
+        })
+    }
+}
 
 impl SMesh {
     pub fn translate<S: Into<MeshSelection>>(
@@ -19,19 +38,15 @@ impl SMesh {
         Ok(())
     }
 
-    pub fn scale<S: Into<MeshSelection>>(&mut self, selection: S, scale: Vec3) -> SMeshResult<()> {
-        self.scale_around(selection, scale, Vec3::ZERO)?;
-        Ok(())
-    }
-
-    pub fn scale_around_cog<S: Into<MeshSelection>>(
+    pub fn scale<S: Into<MeshSelection>>(
         &mut self,
         selection: S,
         scale: Vec3,
+        pivot: Pivot,
     ) -> SMeshResult<()> {
         let s: MeshSelection = selection.into();
-        let cog = self.center_of_gravity(s.clone())?;
-        self.scale_around(s, scale, cog)?;
+        let p = pivot.calculate(self, s.clone())?;
+        self.scale_around(s, scale, p)?;
         Ok(())
     }
 
@@ -39,17 +54,50 @@ impl SMesh {
         &mut self,
         selection: S,
         scale: Vec3,
-        origin: Vec3,
+        pivot: Vec3,
     ) -> SMeshResult<()> {
         let vertices = selection.into().resolve_to_vertices(self)?;
         for id in vertices {
             let mut position = id.position(self)?;
-            // Translate vertex so that the origin is at the desired point
-            position -= origin;
+            // Translate vertex so that the pivot is at the desired point
+            position -= pivot;
             // Scale the vertex
             position *= scale;
             // Translate the vertex back
-            position += origin;
+            position += pivot;
+            self.positions.insert(id, position);
+        }
+        Ok(())
+    }
+
+    pub fn rotate<S: Into<MeshSelection>>(
+        &mut self,
+        selection: S,
+        quaternion: Quat,
+        pivot: Pivot,
+    ) -> SMeshResult<()> {
+        let s: MeshSelection = selection.into();
+        let p = pivot.calculate(self, s.clone())?;
+        self.rotate_around(s, quaternion, p)?;
+        Ok(())
+    }
+
+    pub fn rotate_around<S: Into<MeshSelection>>(
+        &mut self,
+        selection: S,
+        quaternion: Quat,
+        pivot: Vec3,
+    ) -> SMeshResult<()> {
+        let vertices = selection.into().resolve_to_vertices(self)?;
+        for id in vertices {
+            let mut position = id.position(self)?;
+            // Translate position so that the rotation origin is at the coordinate origin
+            position -= pivot;
+            // Apply the rotation
+            position = quaternion * position;
+            // Translate the position back to its original location
+            position += pivot;
+            // Update the position in your mesh data
             self.positions.insert(id, position);
         }
         Ok(())
