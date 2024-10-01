@@ -129,7 +129,7 @@ impl SMesh {
                 Err(_) => {
                     // New halfedge
                     // TODO: Check if only one he should be added here?
-                    let (he_id, _) = self.make_edge_from_isolated(*v0, *v1);
+                    let (he_id, _) = self.make_edge_internal(*v0, *v1);
                     halfedeges.push((he_id, true));
                 }
             }
@@ -237,13 +237,9 @@ impl SMesh {
         Ok(face_id)
     }
 
-    /// Create an edge (2 halfedges) between two isolated vertices
+    /// Create an edge (2 halfedges) between two vertices
     /// CARE!: This does not take care of connectivity for next/prev edges
-    pub fn make_edge_from_isolated(
-        &mut self,
-        v0: VertexId,
-        v1: VertexId,
-    ) -> (HalfedgeId, HalfedgeId) {
+    pub fn make_edge_internal(&mut self, v0: VertexId, v1: VertexId) -> (HalfedgeId, HalfedgeId) {
         let halfedges = self.halfedges_mut();
         let he_0_id = halfedges.insert(Halfedge::default());
         let he_1_id = halfedges.insert(Halfedge::default());

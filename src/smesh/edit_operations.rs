@@ -1,7 +1,8 @@
+use std::thread::current;
+
 use bevy::{log::info, reflect::List};
 use glam::Vec3;
 use itertools::Itertools;
-use model::mesh;
 
 use crate::{bail, prelude::*};
 
@@ -49,8 +50,28 @@ impl SMesh {
             boundary_edges.push(eb);
         }
 
-        // Assert all are connected in sequence
-        // TODO
+        // Assert all are connected in sequence and check if they form a loop
+        let mut is_loop = false;
+        for (i, (current, next)) in boundary_edges.iter().circular_tuple_windows().enumerate() {
+            let is_last_iteration = i == boundary_edges.len() - 1;
+            match current.next().run(self) {
+                Ok(he) => {
+                    if he == *next {
+                        if is_last_iteration {
+                            is_loop = true;
+                        }
+                    } else {
+                        bail!("Not an edge chain");
+                    }
+                }
+                Err(_) => {
+                    if !is_last_iteration {
+                        bail!("Halfedge has no next")
+                    }
+                }
+            }
+        }
+
         let vertices = boundary_edges
             .iter()
             .flat_map(|e| {
@@ -75,46 +96,40 @@ impl SMesh {
             .iter()
             .copied()
             .circular_tuple_windows()
-            .take(vertex_pairs.len() - 1)
+            .take(vertex_pairs.len() - (if is_loop { 0 } else { 1 }))
         {
-            info!("{:?} {:?} {:?} {:?}", old_0, new_0, old_1, new_1);
             self.make_quad(old_0, old_1, new_1, new_0)?;
             new_edges.push((new_0).halfedge_to(new_1).run(self)?);
         }
         Ok(new_edges)
     }
 
-    pub fn extrude_vertices(
-        &mut self,
-        vertices: Vec<VertexId>,
-        direction: Vec3,
-    ) -> SMeshResult<Vec<VertexId>> {
-        let mut new_vertices = Vec::new();
-
-        for v0 in vertices.iter() {
-            // let v1 = self.extrude_vertex(*v0, direction)?;
-            // new_vertices.push(v1);
+    pub fn extrude(&mut self, face: FaceId) -> SMeshResult<FaceId> {
+        let vertices = face.vertices(self).collect_vec();
+        // Duplicate verts
+        let mut vertex_pairs = Vec::new();
+        for v in &vertices {
+            let position = v.position(self)?;
+            vertex_pairs.push((*v, self.add_vertex(position)));
         }
 
-        for v0 in vertices.iter() {
-            let connected = v0
-                .vertices(self)
-                .filter(|neighbour| vertices.contains(neighbour))
-                .collect_vec();
+        assert_eq!(vertices.len(), vertex_pairs.len());
+
+        // Make faces
+        for ((old_0, new_0), (old_1, new_1)) in
+            vertex_pairs.iter().copied().circular_tuple_windows()
+        {
+            self.make_quad(old_0, old_1, new_1, new_0)?;
         }
-        todo!();
-        Ok(new_vertices)
+        let top_face = self.make_face(vertex_pairs.iter().map(|(_old, new)| *new).collect_vec())?;
+        Ok(top_face)
     }
 
     // Returns the normal of the face. The first three vertices are used to
     // compute the normal. If the vertices of the face are not coplanar,
     // the result will not be correct.
-    fn face_normal(&self, face: FaceId) -> Option<Vec3> {
+    fn calculate_face_normal(&self, face: FaceId) -> Option<Vec3> {
         let verts = face.vertices(self).collect_vec();
-        eprintln!("Face verts: {:?}", verts);
-        for v in &verts {
-            eprintln!("V pos: {:?}", self.positions[*v]);
-        }
         if verts.len() >= 3 {
             let v01 = self.positions[verts[0]] - self.positions[verts[1]];
             let v12 = self.positions[verts[1]] - self.positions[verts[2]];
