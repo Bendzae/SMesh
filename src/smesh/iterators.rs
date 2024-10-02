@@ -1,3 +1,6 @@
+use crate::prelude::model::connectivity::*;
+use crate::prelude::model::mesh::*;
+use crate::prelude::model::mesh_elements::*;
 use crate::smesh::mesh_query::*;
 use crate::smesh::*;
 
@@ -65,6 +68,7 @@ impl<'a> Iterator for FaceAroundVertexIter<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct VertexAroundFaceIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -85,6 +89,7 @@ impl<'a> Iterator for VertexAroundFaceIter<'a> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct HalfedgeAroundFaceIter<'a> {
     conn: &'a Connectivity,
     start: HalfedgeId,
@@ -105,7 +110,9 @@ impl<'a> Iterator for HalfedgeAroundFaceIter<'a> {
 }
 
 pub trait VertexIterators {
+    /// Iterates over connected/neighbouring vertices in a counter clockwise direction
     fn vertices(self, mesh: &SMesh) -> VertexAroundVertexIter;
+    /// Iterates over outgoing halfedges in a counter clockwise direction
     fn halfedges(self, mesh: &SMesh) -> HalfedgeAroundVertexIter;
     fn faces(self, mesh: &SMesh) -> FaceAroundVertexIter;
 }
@@ -203,8 +210,8 @@ mod test {
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
 
-        let _ = mesh.add_face(vec![v0, v1, v2, v3]);
-        let _ = mesh.add_face(vec![v0, v4, v1]);
+        let _ = mesh.make_face(vec![v0, v1, v2, v3]);
+        let _ = mesh.make_face(vec![v0, v4, v1]);
 
         let mut ids = vec![];
         for v_id in v0.vertices(mesh) {
@@ -231,8 +238,8 @@ mod test {
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
 
-        let f0 = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
-        let f1 = mesh.add_face(vec![v0, v4, v1]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2, v3]).unwrap();
+        let f1 = mesh.make_face(vec![v0, v4, v1]).unwrap();
 
         let mut ids = f0.vertices(mesh).collect_vec();
         assert_eq!(ids, vec![v0, v1, v2, v3]);

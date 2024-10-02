@@ -1,6 +1,6 @@
 [package]
 name = "smesh"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["Ben Dzaebel <ben@bendz.dev>"]
 hompage = "bendz.dev"
@@ -11,20 +11,20 @@ description = "A fast and ergonomic surface-mesh/halfedge-mesh implementation an
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-glam = "0.27.0"
+glam = "0.27.0"      # Tracking bevys glam version for convencience
 slotmap = "1.0.7"
 itertools = "0.13.0"
 thiserror = "1.0.63"
 
 # Adapter dependencies
-bevy = { version = "0.14.1", default-features = false, features = [
+bevy = { version = "0.14", default-features = false, features = [
   "bevy_pbr",
 ], optional = true }
 
 [dev-dependencies]
-bevy = "0.14.1"
+bevy = "0.14.2"
 bevy_panorbit_camera = "0.19.3"
-bevy-inspector-egui = "0.25.2"
+bevy-inspector-egui = "0.26"
 
 
 [features]

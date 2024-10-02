@@ -1,5 +1,6 @@
-use crate::smesh::iterators::*;
-use crate::smesh::*;
+use itertools::Itertools;
+
+use crate::{bail, prelude::*};
 
 ///
 /// Higher-level Topological Operations
@@ -105,6 +106,7 @@ impl SMesh {
         if let Ok(f) = h.opposite().face().run(self) {
             self.delete_face(f)?;
         }
+        let _ = self.get_mut(h).delete();
         Ok(())
     }
 
@@ -170,6 +172,18 @@ impl SMesh {
         for v in delete_verts {
             let _ = self.get_mut(v).adjust_outgoing_halfedge();
         }
+        Ok(())
+    }
+
+    // Delete "only" the face without deleting any of its connected elements
+    // Also removes any references to it in its neighbouring halfedges
+    pub fn delete_only_face(&mut self, f: FaceId) -> SMeshResult<()> {
+        let adjust_edges = f.halfedges(self).collect_vec();
+        // remove face id from he's
+        for he in adjust_edges {
+            self.get_mut(he).set_face(None)?;
+        }
+        self.get_mut(f).delete()?;
         Ok(())
     }
 
@@ -440,6 +454,21 @@ impl SMesh {
 
         Ok(())
     }
+
+    /// Create an edge (2 halfedges) between two isolated vertices
+    /// CARE!: This does not take care of connectivity for next/prev edges
+    fn add_edge(&mut self, v0: VertexId, v1: VertexId) -> (HalfedgeId, HalfedgeId) {
+        let halfedges = self.halfedges_mut();
+        let he_0_id = halfedges.insert(Halfedge::default());
+        let he_1_id = halfedges.insert(Halfedge::default());
+        let he_0 = halfedges.get_mut(he_0_id).unwrap();
+        he_0.vertex = v1;
+        he_0.opposite = Some(he_1_id);
+        let he_1 = halfedges.get_mut(he_1_id).unwrap();
+        he_1.vertex = v0;
+        he_1.opposite = Some(he_0_id);
+        (he_0_id, he_1_id)
+    }
 }
 
 #[cfg(test)]
@@ -455,7 +484,7 @@ mod test {
         let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
-        let face = mesh.add_face(vec![v0, v1, v2, v3])?;
+        let face = mesh.make_face(vec![v0, v1, v2, v3])?;
         assert_eq!(face.valence(mesh), 4);
 
         let he = v0.halfedge_to(v1).run(mesh)?;

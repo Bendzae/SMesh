@@ -1,6 +1,8 @@
+use glam::Vec2;
+use glam::Vec3;
+
 use crate::bail;
-use crate::prelude::{FaceIterators, SMesh, SMeshError, SMeshResult, VertexIterators};
-use crate::smesh::{Connectivity, FaceId, HalfedgeId, VertexId};
+use crate::prelude::*;
 use std::marker::PhantomData;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -126,6 +128,9 @@ pub trait VertexOps {
     fn is_isolated(&self, mesh: &SMesh) -> bool;
     fn valence(self, mesh: &SMesh) -> usize;
     fn is_manifold(&self, mesh: &SMesh) -> bool;
+    fn position(self, mesh: &SMesh) -> SMeshResult<Vec3>;
+    fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3>;
+    fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2>;
 }
 impl VertexOps for MeshQueryBuilder<VertexId> {
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
@@ -158,6 +163,21 @@ impl VertexOps for MeshQueryBuilder<VertexId> {
             .count();
         n < 2
     }
+
+    fn position(self, mesh: &SMesh) -> SMeshResult<Vec3> {
+        let v = self.run(mesh)?;
+        v.position(mesh)
+    }
+
+    fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3> {
+        let v = self.run(mesh)?;
+        v.normal(mesh)
+    }
+
+    fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2> {
+        let v = self.run(mesh)?;
+        v.uv(mesh)
+    }
 }
 
 impl VertexOps for VertexId {
@@ -184,6 +204,33 @@ impl VertexOps for VertexId {
     fn is_manifold(&self, mesh: &SMesh) -> bool {
         self.q().is_manifold(mesh)
     }
+
+    fn position(self, mesh: &SMesh) -> SMeshResult<Vec3> {
+        mesh.positions
+            .get(self)
+            .copied()
+            .ok_or(SMeshError::CustomError("Vertex has no position attribute"))
+    }
+
+    fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3> {
+        if let Some(vertex_normals) = &mesh.vertex_normals {
+            return vertex_normals
+                .get(self)
+                .copied()
+                .ok_or(SMeshError::CustomError("Vertex has no normal attribute"));
+        }
+        bail!("No attribute map for normals exists")
+    }
+
+    fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2> {
+        if let Some(uvs) = &mesh.uvs {
+            return uvs
+                .get(self)
+                .copied()
+                .ok_or(SMeshError::CustomError("Vertex has no uv attribute"));
+        }
+        bail!("No attribute map for uvs exists");
+    }
 }
 
 pub trait HalfedgeOps {
@@ -197,7 +244,7 @@ pub trait HalfedgeOps {
     fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
     fn dst_vert(&self) -> MeshQueryBuilder<VertexId>;
     fn is_boundary(&self, mesh: &SMesh) -> bool;
-    // TODO: temp wortkaround
+    // TODO: temp workaround
     fn is_boundary_c(&self, connectivity: &Connectivity) -> bool;
 }
 impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
@@ -286,6 +333,7 @@ impl HalfedgeOps for HalfedgeId {
 pub trait FaceOps {
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
     fn valence(self, mesh: &SMesh) -> usize;
+    fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3>;
 }
 impl FaceOps for MeshQueryBuilder<FaceId> {
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId> {
@@ -294,6 +342,10 @@ impl FaceOps for MeshQueryBuilder<FaceId> {
 
     fn valence(self, mesh: &SMesh) -> usize {
         self.vertices(mesh).count()
+    }
+
+    fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3> {
+        self.run(mesh)?.normal(mesh)
     }
 }
 
@@ -304,6 +356,16 @@ impl FaceOps for FaceId {
 
     fn valence(self, mesh: &SMesh) -> usize {
         self.q().valence(mesh)
+    }
+
+    fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3> {
+        if let Some(face_normals) = &mesh.face_normals {
+            return face_normals
+                .get(self)
+                .copied()
+                .ok_or(SMeshError::CustomError("Face has no normal attribute"));
+        }
+        bail!("No attribute map for face normals exists")
     }
 }
 
@@ -390,7 +452,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
+        let face_id = mesh.make_face(vec![v0, v1, v2, v3]);
 
         assert!(face_id.is_ok());
 
@@ -415,7 +477,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3]);
+        let face_id = mesh.make_face(vec![v0, v1, v2, v3]);
 
         assert!(face_id.is_ok());
 
@@ -435,7 +497,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        let face_id = mesh.add_face(vec![v0, v1, v2, v3])?;
+        let face_id = mesh.make_face(vec![v0, v1, v2, v3])?;
 
         assert_eq!(face_id.valence(mesh), 4);
         assert_eq!(v0.valence(mesh), 2);
@@ -452,7 +514,7 @@ mod test {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
 
-        mesh.add_face(vec![v0, v1, v2, v3])?;
+        mesh.make_face(vec![v0, v1, v2, v3])?;
 
         assert!(v0.is_manifold(mesh));
         assert!(v3.is_manifold(mesh));

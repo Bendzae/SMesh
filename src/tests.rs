@@ -60,7 +60,7 @@ mod smesh_tests {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.5, 1.5, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2, v3, v4]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2, v3, v4]).unwrap();
         assert_eq!(mesh.vertices().len(), 5);
         assert_eq!(mesh.halfedges().len(), 10);
         assert_eq!(mesh.faces().len(), 1);
@@ -76,7 +76,7 @@ mod smesh_tests {
         let mut mesh = vertex_onering()?;
         assert_eq!(mesh.vertices().len(), 7);
         assert_eq!(mesh.faces().len(), 6);
-        let v0 = mesh.vertices().keys().next().unwrap();
+        let v0 = mesh.vertices().next().unwrap();
         // center vertex
         let v = v0.halfedge().cw_rotated_neighbour().dst_vert().run(&mesh)?;
         mesh.delete_vertex(v)?;
@@ -91,7 +91,7 @@ mod smesh_tests {
         let mut mesh = vertex_onering()?;
         assert_eq!(mesh.vertices().len(), 7);
         assert_eq!(mesh.faces().len(), 6);
-        let v0 = mesh.vertices().keys().next().unwrap();
+        let v0 = mesh.vertices().next().unwrap();
         mesh.delete_vertex(v0)?;
         assert_eq!(mesh.vertices().len(), 6);
         assert_eq!(mesh.faces().len(), 4);
@@ -148,7 +148,7 @@ mod smesh_tests {
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
         let v4 = mesh.add_vertex(vec3(0.5, 1.5, 0.0));
-        mesh.add_face(vec![v0, v1, v2, v3, v4]).unwrap();
+        mesh.make_face(vec![v0, v1, v2, v3, v4]).unwrap();
         assert!(!mesh.is_triangle_mesh());
         assert!(!mesh.is_quad_mesh());
     }
@@ -157,7 +157,7 @@ mod smesh_tests {
     fn vertex_valence() {
         let mesh = &mut SMesh::new();
         add_triangle(mesh);
-        let v0 = mesh.vertices().keys().next().unwrap();
+        let v0 = mesh.vertices().next().unwrap();
         assert_eq!(v0.valence(mesh), 2);
     }
 
@@ -165,7 +165,7 @@ mod smesh_tests {
     fn face_valence() {
         let mesh = &mut SMesh::new();
         add_triangle(mesh);
-        let f0 = mesh.faces().keys().next().unwrap();
+        let f0 = mesh.faces().next().unwrap();
         assert_eq!(f0.valence(mesh), 3);
     }
 
@@ -203,7 +203,7 @@ mod smesh_tests {
         let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
         let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
         let v2 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2]).unwrap();
         (v0, v1, v2, f0)
     }
 
@@ -212,8 +212,8 @@ mod smesh_tests {
         let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
         let v2 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2]).unwrap();
-        let f2 = mesh.add_face(vec![v1, v3, v2]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2]).unwrap();
+        let f2 = mesh.make_face(vec![v1, v3, v2]).unwrap();
         (v0, v1, v2, v3, f0, f2)
     }
 
@@ -222,7 +222,7 @@ mod smesh_tests {
         let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
         let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
         let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
-        let f0 = mesh.add_face(vec![v0, v1, v2, v3]).unwrap();
+        let f0 = mesh.make_face(vec![v0, v1, v2, v3]).unwrap();
         (v0, v1, v2, v3, f0)
     }
 }

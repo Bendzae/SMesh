@@ -1,5 +1,4 @@
-use crate::prelude::SMeshResult;
-use crate::smesh::SMesh;
+use crate::prelude::*;
 use glam::vec3;
 
 pub fn vertex_onering() -> SMeshResult<SMesh> {
@@ -13,12 +12,12 @@ pub fn vertex_onering() -> SMeshResult<SMesh> {
     let v5 = mesh.add_vertex(vec3(0.4499999285, 0.2598076165, 0.0000000000));
     let v6 = mesh.add_vertex(vec3(0.2999999225, 0.2598076165, 0.0000000000));
 
-    mesh.add_triangle(v3, v0, v1)?;
-    mesh.add_triangle(v3, v2, v0)?;
-    mesh.add_triangle(v4, v3, v1)?;
-    mesh.add_triangle(v5, v2, v3)?;
-    mesh.add_triangle(v6, v5, v3)?;
-    mesh.add_triangle(v6, v3, v4)?;
+    mesh.make_triangle(v3, v0, v1)?;
+    mesh.make_triangle(v3, v2, v0)?;
+    mesh.make_triangle(v4, v3, v1)?;
+    mesh.make_triangle(v5, v2, v3)?;
+    mesh.make_triangle(v6, v5, v3)?;
+    mesh.make_triangle(v6, v3, v4)?;
 
     Ok(mesh)
 }
@@ -37,16 +36,16 @@ pub fn edge_onering() -> SMeshResult<SMesh> {
     let v8 = mesh.add_vertex(vec3(0.4499999285, 0.2598076165, 0.0000000000));
     let v9 = mesh.add_vertex(vec3(0.2999999225, 0.2598076165, 0.0000000000));
 
-    mesh.add_triangle(v4, v0, v1)?;
-    mesh.add_triangle(v4, v3, v0)?;
-    mesh.add_triangle(v5, v1, v2)?;
-    mesh.add_triangle(v5, v4, v1)?;
-    mesh.add_triangle(v6, v5, v2)?;
-    mesh.add_triangle(v7, v3, v4)?;
-    mesh.add_triangle(v8, v7, v4)?;
-    mesh.add_triangle(v8, v4, v5)?;
-    mesh.add_triangle(v9, v8, v5)?;
-    mesh.add_triangle(v9, v5, v6)?;
+    mesh.make_triangle(v4, v0, v1)?;
+    mesh.make_triangle(v4, v3, v0)?;
+    mesh.make_triangle(v5, v1, v2)?;
+    mesh.make_triangle(v5, v4, v1)?;
+    mesh.make_triangle(v6, v5, v2)?;
+    mesh.make_triangle(v7, v3, v4)?;
+    mesh.make_triangle(v8, v7, v4)?;
+    mesh.make_triangle(v8, v4, v5)?;
+    mesh.make_triangle(v9, v8, v5)?;
+    mesh.make_triangle(v9, v5, v6)?;
 
     Ok(mesh)
 }

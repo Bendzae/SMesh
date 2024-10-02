@@ -1,12 +1,9 @@
-use bevy::{
-    color::palettes::css::{BLACK, GREEN, ORANGE_RED, TURQUOISE, WHITE, YELLOW},
-    prelude::*,
-};
+use bevy::color::palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW};
+use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
 use smesh::prelude::*;
-use smesh::test_utils::edge_onering;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Selection {
@@ -27,27 +24,51 @@ struct UiTag;
 
 fn init_system(mut commands: Commands) {
     // Spawn SMesh
-    let mut mesh = SMesh::new();
-    let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
-    let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
-    let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
-    let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
-
-    let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
-    let _ = mesh.add_face(vec![v0, v1, v2, v3]);
-    let _ = mesh.add_face(vec![v0, v4, v1]);
-
-    let v0 = mesh.vertices().keys().next().unwrap();
+    // let mut mesh = SMesh::new();
+    // let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+    // let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
+    // let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+    // let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
+    //
+    // let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
+    // let _ = mesh.make_face(vec![v0, v1, v2, v3]);
+    // let _ = mesh.make_face(vec![v0, v4, v1]);
+    //
+    // let v0 = mesh.vertices().keys().next().unwrap();
+    // mesh.recalculate_normals().unwrap();
 
     // let test_he = v0.halfedge_to(v1).run(&mesh).unwrap();
+    // commands.spawn((
+    //     DebugRenderSMesh {
+    //         mesh,
+    //         selection: Selection::Vertex(v0),
+    //     },
+    //     TransformBundle::default(),
+    // ));
+
+    // Extrude test
+    let mut smesh = SMesh::new();
+    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
+    let v1 = smesh.add_vertex(vec3(-1.0, -1.0, 1.0));
+    let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
+    let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+
+    let f0 = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
+    // smesh.extrude_faces(vec![f0], 1.0).unwrap();
+    let e1 = smesh
+        .extrude_edge(v2.halfedge_to(v3).run(&smesh).unwrap())
+        .unwrap();
+    smesh.translate(e1, Vec3::Y).unwrap();
+    let e1 = smesh.extrude_edge(e1).unwrap();
+    smesh.translate(e1, Vec3::Y + Vec3::X).unwrap();
+    smesh.recalculate_normals().unwrap();
     commands.spawn((
         DebugRenderSMesh {
-            mesh,
+            mesh: smesh,
             selection: Selection::Vertex(v0),
         },
-        TransformBundle::default(),
+        TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
     ));
-
     // Camera
     commands.spawn((
         Camera3dBundle {
@@ -64,66 +85,66 @@ fn debug_draw_smesh_system(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut 
             .unwrap_or_else(|e| warn!("Error while drawing mesh: {:?}", e));
     }
 }
+
 fn debug_draw_smesh(
     debug_smesh: &DebugRenderSMesh,
     t: &Transform,
-    mut gizmos: &mut Gizmos,
+    gizmos: &mut Gizmos,
 ) -> SMeshResult<()> {
     let mesh = &debug_smesh.mesh;
     // Verts
-    for (v_id, v) in mesh.vertices().iter() {
+    for v_id in mesh.vertices() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
         let color = if debug_smesh.selection == Selection::Vertex(v_id) {
             ORANGE_RED
         } else {
             GREEN
         };
-        gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, Color::from(color));
+        gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
+        gizmos.arrow(v_pos, v_pos + v_id.normal(mesh)? * 0.2, color);
     }
     // Halfedges
-    for (he_id, he) in mesh.halfedges().iter() {
+    for he_id in mesh.halfedges() {
         let he = he_id;
-        let opposite = he.opposite().run(mesh);
-        let v_src = he.src_vert().run(mesh);
-        let v_dst = he.dst_vert().run(mesh);
-        let v_src_pos = t.transform_point(*mesh.positions.get(v_src?).unwrap());
-        let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst?).unwrap());
+        let v_src = he.src_vert().run(mesh)?;
+        let v_dst = he.dst_vert().run(mesh)?;
+        let v_src_pos = t.transform_point(*mesh.positions.get(v_src).unwrap());
+        let v_dst_pos = t.transform_point(*mesh.positions.get(v_dst).unwrap());
         let color = if debug_smesh.selection == Selection::Halfedge(he_id) {
             ORANGE_RED
         } else {
             TURQUOISE
         };
-        draw_halfedge(&mut gizmos, v_src_pos, v_dst_pos, color.into());
-        let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
-            ORANGE_RED
-        } else {
-            TURQUOISE
-        };
-        draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color.into());
+        let edge_normal = ((v_src.normal(mesh)? + v_dst.normal(mesh)?) / 2.0).normalize();
+        draw_halfedge(gizmos, v_src_pos, v_dst_pos, edge_normal, color);
+        // let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
+        //     Color::ORANGE_RED
+        // } else {
+        //     Color::TURQUOISE
+        // };
+        // draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
     }
     // Faces
-    for face_id in mesh.faces().keys() {
+    for face_id in mesh.faces() {
         let vertex_positions = face_id
             .vertices(mesh)
             .map(|v| *mesh.positions.get(v).unwrap());
-        let (count, sum) = vertex_positions
-            .enumerate()
-            .reduce(|(i, pos), (i_acc, acc)| (i + i_acc, acc + pos))
-            .unwrap();
-        let center = t.transform_point(sum / count as f32);
+        let count = vertex_positions.clone().count() as f32;
+        let relative_center = vertex_positions.fold(Vec3::ZERO, |acc, pos| (acc + pos)) / count;
+        let center = t.transform_point(relative_center);
         let color = if debug_smesh.selection == Selection::Face(face_id) {
             ORANGE_RED
         } else {
             YELLOW
         };
         gizmos.sphere(center, Quat::IDENTITY, 0.02, color);
+        gizmos.arrow(center, center + face_id.normal(mesh)? * 0.3, color);
     }
     Ok(())
 }
 
-fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, color: Color) {
+fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, normal: Vec3, color: Srgba) {
     let dir = (v1 - v0).normalize();
-    let normal = Vec3::Z; // TODO
     let offset = dir.cross(normal) * 0.05;
     let line_start = v0 - offset + dir * 0.1;
     let line_end = v1 - offset - dir * 0.1;
@@ -151,7 +172,7 @@ fn change_selection_inner(
                 }
                 if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_vertex(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
             }
             Selection::Halfedge(id) => {
@@ -191,13 +212,13 @@ fn change_selection_inner(
                 }
                 if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_edge(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
             }
             Selection::Face(id) => {
                 if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_face(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
                 if input.just_pressed(KeyCode::KeyN) {
                     d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);
