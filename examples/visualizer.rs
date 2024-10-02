@@ -1,4 +1,4 @@
-use bevy::color::palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW};
+use bevy::color::palettes::css::{BLACK, GREEN, ORANGE_RED, TURQUOISE, WHITE, YELLOW};
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
@@ -23,29 +23,6 @@ struct DebugRenderSMesh {
 struct UiTag;
 
 fn init_system(mut commands: Commands) {
-    // Spawn SMesh
-    // let mut mesh = SMesh::new();
-    // let v0 = mesh.add_vertex(vec3(-1.0, -1.0, 0.0));
-    // let v1 = mesh.add_vertex(vec3(1.0, -1.0, 0.0));
-    // let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
-    // let v3 = mesh.add_vertex(vec3(-1.0, 1.0, 0.0));
-    //
-    // let v4 = mesh.add_vertex(vec3(0.0, -2.0, 0.0));
-    // let _ = mesh.make_face(vec![v0, v1, v2, v3]);
-    // let _ = mesh.make_face(vec![v0, v4, v1]);
-    //
-    // let v0 = mesh.vertices().keys().next().unwrap();
-    // mesh.recalculate_normals().unwrap();
-
-    // let test_he = v0.halfedge_to(v1).run(&mesh).unwrap();
-    // commands.spawn((
-    //     DebugRenderSMesh {
-    //         mesh,
-    //         selection: Selection::Vertex(v0),
-    //     },
-    //     TransformBundle::default(),
-    // ));
-
     // Extrude test
     let mut smesh = SMesh::new();
     let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
@@ -53,8 +30,7 @@ fn init_system(mut commands: Commands) {
     let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
     let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
 
-    let f0 = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
-    // smesh.extrude_faces(vec![f0], 1.0).unwrap();
+    let _f0 = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
     let e1 = smesh
         .extrude_edge(v2.halfedge_to(v3).run(&smesh).unwrap())
         .unwrap();
