@@ -26,14 +26,14 @@ impl SMesh {
         &mut self,
         selection: S,
         translation: Vec3,
-    ) -> SMeshResult<()> {
+    ) -> SMeshResult<&mut SMesh> {
         let vertices = selection.into().resolve_to_vertices(self)?;
         for id in vertices {
             if let Some(pos) = self.positions.get(id) {
                 self.positions.insert(id, *pos + translation);
             }
         }
-        Ok(())
+        Ok(self)
     }
 
     pub fn scale<S: Into<MeshSelection>>(
@@ -41,11 +41,11 @@ impl SMesh {
         selection: S,
         scale: Vec3,
         pivot: Pivot,
-    ) -> SMeshResult<()> {
+    ) -> SMeshResult<&mut SMesh> {
         let s: MeshSelection = selection.into();
         let p = pivot.calculate(self, s.clone())?;
         self.scale_around(s, scale, p)?;
-        Ok(())
+        Ok(self)
     }
 
     pub fn scale_around<S: Into<MeshSelection>>(
@@ -53,7 +53,7 @@ impl SMesh {
         selection: S,
         scale: Vec3,
         pivot: Vec3,
-    ) -> SMeshResult<()> {
+    ) -> SMeshResult<&mut SMesh> {
         let vertices = selection.into().resolve_to_vertices(self)?;
         for id in vertices {
             let mut position = id.position(self)?;
@@ -65,7 +65,7 @@ impl SMesh {
             position += pivot;
             self.positions.insert(id, position);
         }
-        Ok(())
+        Ok(self)
     }
 
     pub fn rotate<S: Into<MeshSelection>>(
@@ -73,11 +73,11 @@ impl SMesh {
         selection: S,
         quaternion: Quat,
         pivot: Pivot,
-    ) -> SMeshResult<()> {
+    ) -> SMeshResult<&mut SMesh> {
         let s: MeshSelection = selection.into();
         let p = pivot.calculate(self, s.clone())?;
         self.rotate_around(s, quaternion, p)?;
-        Ok(())
+        Ok(self)
     }
 
     pub fn rotate_around<S: Into<MeshSelection>>(
@@ -85,7 +85,7 @@ impl SMesh {
         selection: S,
         quaternion: Quat,
         pivot: Vec3,
-    ) -> SMeshResult<()> {
+    ) -> SMeshResult<&mut SMesh> {
         let vertices = selection.into().resolve_to_vertices(self)?;
         for id in vertices {
             let mut position = id.position(self)?;
@@ -98,7 +98,7 @@ impl SMesh {
             // Update the position in your mesh data
             self.positions.insert(id, position);
         }
-        Ok(())
+        Ok(self)
     }
 
     pub fn center_of_gravity<S: Into<MeshSelection>>(&self, selection: S) -> SMeshResult<Vec3> {

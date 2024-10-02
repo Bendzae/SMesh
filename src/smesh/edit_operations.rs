@@ -116,10 +116,12 @@ impl SMesh {
 
         assert_eq!(vertices.len(), vertex_pairs.len());
 
+        self.delete_only_face(face)?;
         // Make faces
         for ((old_0, new_0), (old_1, new_1)) in
             vertex_pairs.iter().copied().circular_tuple_windows()
         {
+            info!("{:?} {:?} {:?} {:?}", old_0, old_1, new_1, new_0);
             self.make_quad(old_0, old_1, new_1, new_0)?;
         }
         let top_face = self.make_face(vertex_pairs.iter().map(|(_old, new)| *new).collect_vec())?;

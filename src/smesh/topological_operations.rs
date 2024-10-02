@@ -175,6 +175,18 @@ impl SMesh {
         Ok(())
     }
 
+    // Delete "only" the face without deleting any of its connected elements
+    // Also removes any references to it in its neighbouring halfedges
+    pub fn delete_only_face(&mut self, f: FaceId) -> SMeshResult<()> {
+        let adjust_edges = f.halfedges(self).collect_vec();
+        // remove face id from he's
+        for he in adjust_edges {
+            self.get_mut(he).set_face(None)?;
+        }
+        self.get_mut(f).delete()?;
+        Ok(())
+    }
+
     /// whether collapsing the halfedge  v0v1 is topologically legal.
     /// This function is only valid for triangle meshes.
     pub fn is_collapse_ok(&self, v0v1: HalfedgeId) -> SMeshResult<()> {

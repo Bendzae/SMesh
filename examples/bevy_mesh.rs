@@ -53,16 +53,33 @@ fn init_system(
     let mut smesh = SMesh::new();
     let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
     let v1 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
-    let v2 = smesh.add_vertex(vec3(2.0, -1.0, -1.0));
-    let face = smesh.make_face(vec![v0, v1, v2]).unwrap();
+    let v2 = smesh.add_vertex(vec3(1.0, -1.0, -1.5));
+    let v3 = smesh.add_vertex(vec3(-1.0, -1.0, -1.5));
+    let face = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
     let face = smesh.extrude(face).unwrap();
-    smesh.translate(face, vec3(0.0, 1.0, -0.3)).unwrap();
-    smesh.scale(face, Vec3::splat(0.6), Pivot::SelectionCog).unwrap();
-    smesh.rotate(face, Quat::from_rotation_y(PI / 10.0), Pivot::Zero).unwrap();
+    smesh
+        .translate(face, vec3(0.0, 1.0, 0.0))
+        .unwrap()
+        .scale(face, Vec3::splat(0.6), Pivot::SelectionCog)
+        .unwrap()
+        .rotate(face, Quat::from_rotation_y(PI / 10.0), Pivot::Zero)
+        .unwrap();
     let face = smesh.extrude(face).unwrap();
-    smesh.translate(face, vec3(0.0, 1.2, -0.3)).unwrap();
-    smesh.scale(face, Vec3::splat(0.8), Pivot::SelectionCog).unwrap();
-    smesh.rotate(face, Quat::from_rotation_y(PI / 10.0), Pivot::Zero).unwrap();
+    smesh
+        .translate(face, vec3(0.0, 1.2, 0.0))
+        .unwrap()
+        .scale(face, Vec3::splat(1.8), Pivot::SelectionCog)
+        .unwrap()
+        .rotate(face, Quat::from_rotation_y(PI / 10.0), Pivot::Zero)
+        .unwrap();
+    let face = smesh.extrude(face).unwrap();
+    smesh
+        .translate(face, vec3(0.0, 1.2, 0.0))
+        .unwrap()
+        .scale(face, Vec3::splat(1.8), Pivot::SelectionCog)
+        .unwrap()
+        .rotate(face, Quat::from_rotation_y(PI / 10.0), Pivot::Zero)
+        .unwrap();
     // let e2 = smesh.extrude_edge(e1).unwrap();
     // smesh.translate(e2, vec3(0.0, 0.5, -0.4)).unwrap();
     // let e3 = smesh.extrude_edge(e2).unwrap();
@@ -71,7 +88,7 @@ fn init_system(
     commands.spawn(PbrBundle {
         mesh: meshes.add(Mesh::from(smesh)),
         material: materials.add(StandardMaterial::from(Color::rgb(0.4, 0.4, 1.0))),
-        transform: Transform::from_translation(vec3(2.2, 0.0, 0.0)),
+        transform: Transform::from_translation(vec3(3.0, 0.0, 0.0)),
         ..default()
     });
 
