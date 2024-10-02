@@ -1,6 +1,9 @@
-use bevy::render::{
-    mesh::{Indices, Mesh, PrimitiveTopology},
-    render_asset::RenderAssetUsages,
+use bevy::{
+    reflect::List,
+    render::{
+        mesh::{Indices, Mesh, PrimitiveTopology},
+        render_asset::RenderAssetUsages,
+    },
 };
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
@@ -10,17 +13,22 @@ use crate::prelude::*;
 impl From<SMesh> for Mesh {
     fn from(smesh: SMesh) -> Self {
         let buffers = smesh.to_buffers().unwrap();
+        let vertex_count = buffers.positions.len();
 
-        Mesh::new(
+        let mut mesh = Mesh::new(
             PrimitiveTopology::TriangleList,
             RenderAssetUsages::default(),
         )
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, buffers.positions)
-        // .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, buffers.uvs)
-        // .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, buffers.normals)
-        .with_inserted_indices(Indices::U32(buffers.indices))
-        .with_duplicated_vertices()
-        .with_computed_flat_normals()
+        .with_inserted_indices(Indices::U32(buffers.indices));
+
+        if buffers.uvs.len() == vertex_count {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, buffers.uvs);
+        }
+        if buffers.normals.len() == vertex_count {
+            mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, buffers.normals);
+        }
+        mesh
     }
 }
 
