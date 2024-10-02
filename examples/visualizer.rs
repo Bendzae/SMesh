@@ -93,7 +93,7 @@ fn debug_draw_smesh(
 ) -> SMeshResult<()> {
     let mesh = &debug_smesh.mesh;
     // Verts
-    for (v_id, _v) in mesh.vertices().iter() {
+    for v_id in mesh.vertices() {
         let v_pos = t.transform_point(*mesh.positions.get(v_id).unwrap());
         let color = if debug_smesh.selection == Selection::Vertex(v_id) {
             ORANGE_RED
@@ -104,7 +104,7 @@ fn debug_draw_smesh(
         gizmos.arrow(v_pos, v_pos + v_id.normal(mesh)? * 0.2, color);
     }
     // Halfedges
-    for (he_id, _he) in mesh.halfedges().iter() {
+    for he_id in mesh.halfedges() {
         let he = he_id;
         let v_src = he.src_vert().run(mesh)?;
         let v_dst = he.dst_vert().run(mesh)?;
@@ -125,7 +125,7 @@ fn debug_draw_smesh(
         // draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
     }
     // Faces
-    for face_id in mesh.faces().keys() {
+    for face_id in mesh.faces() {
         let vertex_positions = face_id
             .vertices(mesh)
             .map(|v| *mesh.positions.get(v).unwrap());
@@ -172,7 +172,7 @@ fn change_selection_inner(
                 }
                 if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_vertex(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
             }
             Selection::Halfedge(id) => {
@@ -212,13 +212,13 @@ fn change_selection_inner(
                 }
                 if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_edge(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
             }
             Selection::Face(id) => {
                 if input.just_pressed(KeyCode::KeyD) {
                     d.mesh.delete_face(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().keys().next().unwrap());
+                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
                 if input.just_pressed(KeyCode::KeyN) {
                     d.selection = Selection::Halfedge(id.halfedge().run(&d.mesh)?);

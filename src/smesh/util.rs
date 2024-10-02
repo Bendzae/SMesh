@@ -8,15 +8,15 @@ impl SMesh {
     pub fn recalculate_normals(&mut self) -> SMeshResult<()> {
         // # Step 1: Initialize all vertex normals to zero
         let mut vertex_normals = SecondaryMap::default();
-        for v in self.vertices().keys() {
+        for v in self.vertices() {
             vertex_normals.insert(v, Vec3::ZERO);
         }
         let mut face_normals = SecondaryMap::default();
-        for f in self.faces().keys() {
+        for f in self.faces() {
             face_normals.insert(f, Vec3::ZERO);
         }
         // Step 2: Compute face normals and accumulate into vertex normals
-        for face in self.faces().keys() {
+        for face in self.faces() {
             // Get the three vertices of the face
             let face_vertices = face.vertices(self).collect_vec();
             let v0 = face_vertices.get(0).unwrap();

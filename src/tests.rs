@@ -76,7 +76,7 @@ mod smesh_tests {
         let mut mesh = vertex_onering()?;
         assert_eq!(mesh.vertices().len(), 7);
         assert_eq!(mesh.faces().len(), 6);
-        let v0 = mesh.vertices().keys().next().unwrap();
+        let v0 = mesh.vertices().next().unwrap();
         // center vertex
         let v = v0.halfedge().cw_rotated_neighbour().dst_vert().run(&mesh)?;
         mesh.delete_vertex(v)?;
@@ -91,7 +91,7 @@ mod smesh_tests {
         let mut mesh = vertex_onering()?;
         assert_eq!(mesh.vertices().len(), 7);
         assert_eq!(mesh.faces().len(), 6);
-        let v0 = mesh.vertices().keys().next().unwrap();
+        let v0 = mesh.vertices().next().unwrap();
         mesh.delete_vertex(v0)?;
         assert_eq!(mesh.vertices().len(), 6);
         assert_eq!(mesh.faces().len(), 4);
@@ -157,7 +157,7 @@ mod smesh_tests {
     fn vertex_valence() {
         let mesh = &mut SMesh::new();
         add_triangle(mesh);
-        let v0 = mesh.vertices().keys().next().unwrap();
+        let v0 = mesh.vertices().next().unwrap();
         assert_eq!(v0.valence(mesh), 2);
     }
 
@@ -165,7 +165,7 @@ mod smesh_tests {
     fn face_valence() {
         let mesh = &mut SMesh::new();
         add_triangle(mesh);
-        let f0 = mesh.faces().keys().next().unwrap();
+        let f0 = mesh.faces().next().unwrap();
         assert_eq!(f0.valence(mesh), 3);
     }
 

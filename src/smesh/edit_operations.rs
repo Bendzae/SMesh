@@ -6,6 +6,7 @@ use itertools::Itertools;
 
 use crate::{bail, prelude::*};
 
+/// Edit operations
 impl SMesh {
     pub fn extrude_edge(&mut self, e0: HalfedgeId) -> SMeshResult<HalfedgeId> {
         // Find boundary halfedge

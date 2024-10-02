@@ -14,9 +14,7 @@ impl Pivot {
     fn calculate<S: Into<MeshSelection>>(&self, mesh: &SMesh, selection: S) -> SMeshResult<Vec3> {
         Ok(match self {
             Pivot::Zero => Vec3::ZERO,
-            Pivot::MeshCog => {
-                mesh.center_of_gravity(mesh.vertices().iter().map(|(id, _)| id).collect_vec())?
-            }
+            Pivot::MeshCog => mesh.center_of_gravity(mesh.vertices().collect_vec())?,
             Pivot::SelectionCog => mesh.center_of_gravity(selection)?,
             Pivot::Local(pos) => *pos,
         })

@@ -29,14 +29,14 @@ impl SMesh {
             ..Default::default()
         }
     }
-    pub fn vertices(&self) -> &SlotMap<VertexId, Vertex> {
-        &self.connectivity.vertices
+    pub fn vertices(&self) -> slotmap::basic::Keys<VertexId, Vertex> {
+        self.connectivity.vertices.keys()
     }
-    pub fn halfedges(&self) -> &SlotMap<HalfedgeId, Halfedge> {
-        &self.connectivity.halfedges
+    pub fn halfedges(&self) -> slotmap::basic::Keys<HalfedgeId, Halfedge> {
+        self.connectivity.halfedges.keys()
     }
-    pub fn faces(&self) -> &SlotMap<FaceId, Face> {
-        &self.connectivity.faces
+    pub fn faces(&self) -> slotmap::basic::Keys<FaceId, Face> {
+        self.connectivity.faces.keys()
     }
     pub fn vertices_mut(&mut self) -> &mut SlotMap<VertexId, Vertex> {
         &mut self.connectivity.vertices
@@ -69,7 +69,7 @@ impl SMesh {
     /// Create an isolated vertex to the mesh
     /// ```
     /// use glam::vec3;
-    /// use smesh::smesh::SMesh;
+    /// use smesh::prelude::*;
     ///
     /// let mesh = &mut SMesh::new();
     /// mesh.add_vertex(vec3(0.0,0.0,0.0));
