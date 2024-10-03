@@ -8,6 +8,29 @@ use crate::{bail, prelude::*};
 
 /// Edit operations
 impl SMesh {
+    pub fn extrude(&mut self, face: FaceId) -> SMeshResult<FaceId> {
+        let vertices = face.vertices(self).collect_vec();
+        // Duplicate verts
+        let mut vertex_pairs = Vec::new();
+        for v in &vertices {
+            let position = v.position(self)?;
+            vertex_pairs.push((*v, self.add_vertex(position)));
+        }
+
+        assert_eq!(vertices.len(), vertex_pairs.len());
+
+        self.delete_only_face(face)?;
+        // Make faces
+        for ((old_0, new_0), (old_1, new_1)) in
+            vertex_pairs.iter().copied().circular_tuple_windows()
+        {
+            info!("{:?} {:?} {:?} {:?}", old_0, old_1, new_1, new_0);
+            self.make_quad(old_0, old_1, new_1, new_0)?;
+        }
+        let top_face = self.make_face(vertex_pairs.iter().map(|(_old, new)| *new).collect_vec())?;
+        Ok(top_face)
+    }
+
     pub fn extrude_edge(&mut self, e0: HalfedgeId) -> SMeshResult<HalfedgeId> {
         // Find boundary halfedge
         let e0 = match e0.is_boundary(self) {
@@ -103,29 +126,6 @@ impl SMesh {
             new_edges.push((new_0).halfedge_to(new_1).run(self)?);
         }
         Ok(new_edges)
-    }
-
-    pub fn extrude(&mut self, face: FaceId) -> SMeshResult<FaceId> {
-        let vertices = face.vertices(self).collect_vec();
-        // Duplicate verts
-        let mut vertex_pairs = Vec::new();
-        for v in &vertices {
-            let position = v.position(self)?;
-            vertex_pairs.push((*v, self.add_vertex(position)));
-        }
-
-        assert_eq!(vertices.len(), vertex_pairs.len());
-
-        self.delete_only_face(face)?;
-        // Make faces
-        for ((old_0, new_0), (old_1, new_1)) in
-            vertex_pairs.iter().copied().circular_tuple_windows()
-        {
-            info!("{:?} {:?} {:?} {:?}", old_0, old_1, new_1, new_0);
-            self.make_quad(old_0, old_1, new_1, new_0)?;
-        }
-        let top_face = self.make_face(vertex_pairs.iter().map(|(_old, new)| *new).collect_vec())?;
-        Ok(top_face)
     }
 
     // Returns the normal of the face. The first three vertices are used to

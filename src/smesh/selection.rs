@@ -30,6 +30,23 @@ impl MeshSelection {
         }
         Ok(vertices)
     }
+
+    pub fn resolve_to_faces(&self, smesh: &SMesh) -> SMeshResult<HashSet<FaceId>> {
+        let mut faces = self.faces.clone();
+        for he in &self.halfedges {
+            faces.insert(he.face().run(smesh)?);
+        }
+        for v in &self.vertices {
+            for f in v.faces(smesh) {
+                if f.vertices(smesh)
+                    .all(|face_v| self.vertices.contains(&face_v))
+                {
+                    faces.insert(f);
+                }
+            }
+        }
+        Ok(faces)
+    }
 }
 
 impl From<VertexId> for MeshSelection {
