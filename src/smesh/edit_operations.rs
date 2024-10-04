@@ -1,4 +1,4 @@
-use std::thread::current;
+use std::collections::{HashMap, HashSet};
 
 use bevy::{log::info, reflect::List};
 use glam::Vec3;
@@ -24,13 +24,95 @@ impl SMesh {
         for ((old_0, new_0), (old_1, new_1)) in
             vertex_pairs.iter().copied().circular_tuple_windows()
         {
-            info!("{:?} {:?} {:?} {:?}", old_0, old_1, new_1, new_0);
             self.make_quad(old_0, old_1, new_1, new_0)?;
         }
         let top_face = self.make_face(vertex_pairs.iter().map(|(_old, new)| *new).collect_vec())?;
         Ok(top_face)
     }
 
+    pub fn extrude_faces(&mut self, faces: Vec<FaceId>) -> SMeshResult<Vec<FaceId>> {
+        // Step 1: Collect all unique vertices and create mapping to new vertices
+        let mut vertex_map = HashMap::new();
+        for &face in faces.iter() {
+            for vertex in face.vertices(self).collect_vec() {
+                if !vertex_map.contains_key(&vertex) {
+                    let position = vertex.position(self)?;
+                    let new_vertex = self.add_vertex(position);
+                    vertex_map.insert(vertex, new_vertex);
+                }
+            }
+        }
+
+        // Step 2: Collect the vertices of each face before deleting
+        let mut face_vertex_map = HashMap::new();
+        for &face in faces.iter() {
+            let vertices = face.vertices(self).collect_vec();
+            face_vertex_map.insert(face, vertices);
+        }
+
+        // Step 3: Collect boundary half-edges
+        let selected_faces: HashSet<FaceId> = faces.iter().cloned().collect();
+        let mut boundary_half_edges = Vec::new();
+        let mut inner_half_edges = Vec::new();
+        let mut boundary_vertices = Vec::new();
+        for &face in faces.iter() {
+            for half_edge in face.halfedges(self) {
+                let opp = half_edge.opposite().run(self)?;
+                let adjacent_face = opp.face().run(self).ok();
+                if adjacent_face.is_none() || !selected_faces.contains(&adjacent_face.unwrap()) {
+                    boundary_half_edges.push(opp);
+                    boundary_vertices.push(opp.src_vert().run(self)?);
+                    boundary_vertices.push(opp.dst_vert().run(self)?);
+                } else {
+                    inner_half_edges.push(opp);
+                }
+            }
+        }
+
+        // Step 4: Delete the old vertices/faces
+        // if faces.len() == 1 {
+        //     self.delete_only_face(*faces.first().unwrap())?;
+        //     info!("deleted face");
+        // }
+        // for vertex in faces
+        //     .iter()
+        //     .flat_map(|f| f.vertices(self))
+        //     .filter(|v| !boundary_vertices.contains(v))
+        //     .collect_vec()
+        // {
+        //     self.delete_vertex(vertex)?;
+        //     info!("deleted vertex");
+        // }
+        // for he in inner_half_edges {
+        //     self.delete_only_edge(he)?;
+        //     info!("deleted edge");
+        // }
+
+        // Step 5: Create side faces along boundary edges
+        for edge in boundary_half_edges.iter() {
+            let src_old = edge.src_vert().run(self)?;
+            let dst_old = edge.dst_vert().run(self)?;
+            let src_new = vertex_map[&src_old];
+            let dst_new = vertex_map[&dst_old];
+            // self.translate(vec![src_new, dst_new], Vec3::Y)?;
+            self.make_quad(src_old, dst_old, dst_new, src_new)?;
+        }
+
+        for ele in self.faces() {
+            info!("{:?}", ele.vertices(self).collect_vec().len());
+        }
+        // Step 6: Create new faces on top
+        let mut new_faces = Vec::new();
+        for &face in faces.iter() {
+            let old_vertices = &face_vertex_map[&face];
+            let mut new_vertices = old_vertices.iter().map(|&v| vertex_map[&v]).collect_vec();
+            new_vertices.reverse();
+            let new_face = self.make_face(new_vertices)?;
+            new_faces.push(new_face);
+        }
+
+        Ok(new_faces)
+    }
     pub fn extrude_edge(&mut self, e0: HalfedgeId) -> SMeshResult<HalfedgeId> {
         // Find boundary halfedge
         let e0 = match e0.is_boundary(self) {

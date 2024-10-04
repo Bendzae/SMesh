@@ -1,3 +1,6 @@
+use std::collections::HashSet;
+
+use bevy::log::info;
 use itertools::Itertools;
 
 use crate::{bail, prelude::*};
@@ -187,6 +190,45 @@ impl SMesh {
         Ok(())
     }
 
+    // Delete "only" the edge without deleting any of its connected elements
+    pub fn delete_only_edge(&mut self, e: HalfedgeId) -> SMeshResult<()> {
+        if !self.halfedges().contains(&e) {
+            // Already deleted
+            return Ok(());
+        }
+        let mut vert_needs_adjust = HashSet::new();
+        let mut he_needs_adjust = HashSet::new();
+        if let Ok(face) = e.face().run(self) {
+            self.delete_only_face(face).ok();
+        }
+        vert_needs_adjust.insert(e.src_vert().run(self)?);
+        if let Ok(prev) = e.prev().run(self) {
+            he_needs_adjust.insert(prev);
+        }
+        self.get_mut(e).delete().ok();
+        // if let Ok(opposite) = e.opposite().run(self) {
+        //     if let Ok(face) = opposite.face().run(self) {
+        //         self.delete_only_face(face)?;
+        //     }
+        //     if let Ok(prev) = opposite.prev().run(self) {
+        //         he_needs_adjust.insert(prev);
+        //     }
+        //     vert_needs_adjust.insert(opposite.src_vert().run(self)?);
+        //     self.get_mut(opposite).delete()?;
+        // }
+
+        for v_id in vert_needs_adjust {
+            self.get_mut(v_id).adjust_outgoing_halfedge()?;
+            info!("Adjusting verts");
+        }
+        for h_id in he_needs_adjust {
+            let new_next = h_id.dst_vert().halfedge().run(self).ok();
+            self.get_mut(h_id).set_next(new_next).ok();
+            info!("Adjusting edges");
+        }
+        Ok(())
+    }
+
     /// whether collapsing the halfedge  v0v1 is topologically legal.
     /// This function is only valid for triangle meshes.
     pub fn is_collapse_ok(&self, v0v1: HalfedgeId) -> SMeshResult<()> {
@@ -282,6 +324,7 @@ impl SMesh {
 
         // same face?
         if f0 == f1 {
+            info!("same face");
             bail!(TopologyError);
         }
 
@@ -290,6 +333,7 @@ impl SMesh {
             if v != v0 && v != v1 {
                 for f in v.faces(self) {
                     if f == f1 {
+                        info!("connected");
                         bail!(TopologyError);
                     }
                 }
@@ -421,6 +465,7 @@ impl SMesh {
 
         // is it a loop ?
         if !((h1.next().run(self)? == h0) && (h1 != o0)) {
+            info!("loop");
             bail!(TopologyError)
         }
 

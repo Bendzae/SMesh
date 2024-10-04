@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use attribute::CustomAttributeMap;
+use bevy::log::info;
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{SecondaryMap, SlotMap};
@@ -166,11 +167,12 @@ impl SMesh {
 
                     // other halfedges' ids
                     let patch_start = inner_prev.next().run(self)?;
-                    let patch_end = inner_next.prev().run(self)?;
+                    let patch_end = inner_next.prev().run(self).ok();
+                    info!("{:?}", patch_end);
 
                     // save relink info
                     next_cache.push((boundary_prev, patch_start));
-                    next_cache.push((patch_end, boundary_next));
+                    next_cache.push((patch_end.unwrap(), boundary_next));
                     next_cache.push((inner_prev, inner_next));
                 }
             }
@@ -204,8 +206,9 @@ impl SMesh {
                 if prev_new && next_new {
                     match v.halfedge().run(self) {
                         Ok(boundary_next) => {
-                            let boundary_prev = boundary_next.prev().run(self)?;
-                            next_cache.push((boundary_prev, outer_next));
+                            if let Ok(boundary_prev) = boundary_next.prev().run(self) {
+                                next_cache.push((boundary_prev, outer_next));
+                            };
                             next_cache.push((outer_prev, boundary_next));
                         }
                         Err(_) => {
