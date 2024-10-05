@@ -218,12 +218,10 @@ impl SMesh {
         self.get_mut(e).delete().ok();
         for v_id in vert_needs_adjust {
             self.get_mut(v_id).adjust_outgoing_halfedge()?;
-            info!("Adjusting verts");
         }
         for h_id in he_needs_adjust {
             let new_next = h_id.dst_vert().halfedge().run(self).ok();
             self.get_mut(h_id).set_next(new_next).ok();
-            info!("Adjusting edges");
         }
         Ok(())
     }
@@ -323,7 +321,6 @@ impl SMesh {
 
         // same face?
         if f0 == f1 {
-            info!("same face");
             bail!(TopologyError);
         }
 
@@ -332,7 +329,6 @@ impl SMesh {
             if v != v0 && v != v1 {
                 for f in v.faces(self) {
                     if f == f1 {
-                        info!("connected");
                         bail!(TopologyError);
                     }
                 }
@@ -464,7 +460,6 @@ impl SMesh {
 
         // is it a loop ?
         if !((h1.next().run(self)? == h0) && (h1 != o0)) {
-            info!("loop");
             bail!(TopologyError)
         }
 

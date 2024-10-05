@@ -83,7 +83,6 @@ impl SMesh {
         // Step 4: Delete the old vertices/faces
         if faces.len() == 1 {
             self.delete_only_face(*faces.first().unwrap())?;
-            info!("deleted face");
         }
         for vertex in faces
             .iter()
@@ -92,11 +91,9 @@ impl SMesh {
             .collect_vec()
         {
             self.delete_vertex(vertex)?;
-            info!("deleted vertex");
         }
         for he in inner_half_edges {
             self.delete_only_edge(he).ok();
-            info!("deleted edge");
         }
 
         // Step 5: Create side faces along boundary edges

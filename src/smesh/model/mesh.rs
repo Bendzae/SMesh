@@ -168,7 +168,6 @@ impl SMesh {
                     // other halfedges' ids
                     let patch_start = inner_prev.next().run(self)?;
                     let patch_end = inner_next.prev().run(self).ok();
-                    info!("{:?}", patch_end);
 
                     // save relink info
                     next_cache.push((boundary_prev, patch_start));
