@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use attribute::CustomAttributeMapOps;
 use bevy::{log::info, reflect::List};
 use glam::Vec3;
 use itertools::Itertools;
@@ -31,6 +32,7 @@ impl SMesh {
     }
 
     pub fn extrude_faces(&mut self, faces: Vec<FaceId>) -> SMeshResult<Vec<FaceId>> {
+        self.add_attribute_map::<HalfedgeId>("debug").unwrap();
         // Step 1: Collect all unique vertices and create mapping to new vertices
         let mut vertex_map = HashMap::new();
         for &face in faces.iter() {
@@ -60,33 +62,43 @@ impl SMesh {
                 let opp = half_edge.opposite().run(self)?;
                 let adjacent_face = opp.face().run(self).ok();
                 if adjacent_face.is_none() || !selected_faces.contains(&adjacent_face.unwrap()) {
-                    boundary_half_edges.push(opp);
-                    boundary_vertices.push(opp.src_vert().run(self)?);
-                    boundary_vertices.push(opp.dst_vert().run(self)?);
+                    boundary_half_edges.push(half_edge);
+                    boundary_vertices.push(half_edge.src_vert().run(self)?);
+                    boundary_vertices.push(half_edge.dst_vert().run(self)?);
+                    info!("test");
                 } else {
-                    inner_half_edges.push(opp);
+                    let face = half_edge.face().run(self).ok();
+                    if face.is_some() && selected_faces.contains(&face.unwrap()) {
+                        inner_half_edges.push(half_edge);
+                    }
                 }
             }
         }
 
+        for &he in &boundary_half_edges {
+            self.attribute_mut("debug")
+                .unwrap()
+                .insert(he, "red".to_string());
+        }
+
         // Step 4: Delete the old vertices/faces
-        // if faces.len() == 1 {
-        //     self.delete_only_face(*faces.first().unwrap())?;
-        //     info!("deleted face");
-        // }
-        // for vertex in faces
-        //     .iter()
-        //     .flat_map(|f| f.vertices(self))
-        //     .filter(|v| !boundary_vertices.contains(v))
-        //     .collect_vec()
-        // {
-        //     self.delete_vertex(vertex)?;
-        //     info!("deleted vertex");
-        // }
-        // for he in inner_half_edges {
-        //     self.delete_only_edge(he)?;
-        //     info!("deleted edge");
-        // }
+        if faces.len() == 1 {
+            self.delete_only_face(*faces.first().unwrap())?;
+            info!("deleted face");
+        }
+        for vertex in faces
+            .iter()
+            .flat_map(|f| f.vertices(self))
+            .filter(|v| !boundary_vertices.contains(v))
+            .collect_vec()
+        {
+            self.delete_vertex(vertex)?;
+            info!("deleted vertex");
+        }
+        for he in inner_half_edges {
+            self.delete_only_edge(he).ok();
+            info!("deleted edge");
+        }
 
         // Step 5: Create side faces along boundary edges
         for edge in boundary_half_edges.iter() {
@@ -94,19 +106,14 @@ impl SMesh {
             let dst_old = edge.dst_vert().run(self)?;
             let src_new = vertex_map[&src_old];
             let dst_new = vertex_map[&dst_old];
-            // self.translate(vec![src_new, dst_new], Vec3::Y)?;
             self.make_quad(src_old, dst_old, dst_new, src_new)?;
         }
 
-        for ele in self.faces() {
-            info!("{:?}", ele.vertices(self).collect_vec().len());
-        }
         // Step 6: Create new faces on top
         let mut new_faces = Vec::new();
         for &face in faces.iter() {
             let old_vertices = &face_vertex_map[&face];
             let mut new_vertices = old_vertices.iter().map(|&v| vertex_map[&v]).collect_vec();
-            new_vertices.reverse();
             let new_face = self.make_face(new_vertices)?;
             new_faces.push(new_face);
         }

@@ -205,18 +205,17 @@ impl SMesh {
         if let Ok(prev) = e.prev().run(self) {
             he_needs_adjust.insert(prev);
         }
-        self.get_mut(e).delete().ok();
-        // if let Ok(opposite) = e.opposite().run(self) {
-        //     if let Ok(face) = opposite.face().run(self) {
-        //         self.delete_only_face(face)?;
-        //     }
-        //     if let Ok(prev) = opposite.prev().run(self) {
-        //         he_needs_adjust.insert(prev);
-        //     }
-        //     vert_needs_adjust.insert(opposite.src_vert().run(self)?);
-        //     self.get_mut(opposite).delete()?;
-        // }
+        if let Ok(opposite) = e.opposite().run(self) {
+            if let Ok(face) = opposite.face().run(self) {
+                self.delete_only_face(face)?;
+            }
+            if let Ok(prev) = opposite.prev().run(self) {
+                he_needs_adjust.insert(prev);
+            }
+            vert_needs_adjust.insert(opposite.src_vert().run(self)?);
+        }
 
+        self.get_mut(e).delete().ok();
         for v_id in vert_needs_adjust {
             self.get_mut(v_id).adjust_outgoing_halfedge()?;
             info!("Adjusting verts");

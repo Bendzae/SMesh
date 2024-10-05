@@ -50,4 +50,39 @@ impl SMesh {
         self.face_normals = Some(face_normals);
         Ok(())
     }
+
+    pub fn flip_normals(&mut self) -> SMeshResult<()> {
+        // Step 1: Flip Face Normals
+        if let Some(face_normals) = &mut self.face_normals {
+            for (_face, normal) in face_normals.iter_mut() {
+                *normal = -*normal;
+            }
+        }
+
+        // Step 2: Flip Vertex Normals
+        if let Some(vertex_normals) = &mut self.vertex_normals {
+            for (_vertex, normal) in vertex_normals.iter_mut() {
+                *normal = -*normal;
+            }
+        }
+
+        // // Step 3: Reverse the Winding Order of Each Face
+        // let faces_to_update = self.faces().collect_vec();
+        // for face in faces_to_update {
+        //     // Collect the vertices of the face
+        //     let vertices: Vec<VertexId> = face.vertices(self).collect();
+        //
+        //     // Delete the face
+        //     self.delete_only_face(face)?;
+        //
+        //     // Reverse the order of vertices
+        //     let reversed_vertices: Vec<VertexId> = vertices.into_iter().rev().collect();
+        //
+        //     // Recreate the face with reversed vertices
+        //     self.make_face(reversed_vertices)?;
+        // }
+        todo!();
+
+        Ok(())
+    }
 }

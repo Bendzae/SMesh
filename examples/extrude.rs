@@ -29,7 +29,6 @@ fn extrude_faces() -> SMeshResult<SMesh> {
     let faces = smesh.extrude_faces(vec![f0, f1, f2])?;
     // let faces = smesh.extrude_faces(vec![f0])?;
     smesh.translate(faces, Vec3::Y * 2.0)?;
-
     smesh.recalculate_normals()?;
     Ok(smesh)
 }

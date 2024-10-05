@@ -260,8 +260,14 @@ mod test {
     fn basic_string() {
         let mut smesh = SMesh::new();
         let v0 = smesh.add_vertex(vec3(1.0, 1.0, 1.0));
-        let curvature = smesh.add_attribute_map::<VertexId>("curvature").unwrap();
-        curvature.insert(v0, "hello".to_string());
-        assert_eq!(curvature.get(v0), Some("hello".to_string()));
+        smesh.add_attribute_map::<VertexId>("curvature").unwrap();
+        smesh
+            .attribute_mut("curvature")
+            .unwrap()
+            .insert(v0, "hello".to_string());
+        assert_eq!(
+            smesh.attribute("curvature").unwrap().get(v0),
+            Some("hello".to_string())
+        );
     }
 }
