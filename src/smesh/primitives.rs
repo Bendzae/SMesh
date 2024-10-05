@@ -13,7 +13,7 @@ pub struct CubeData {
 }
 
 impl Cube {
-    pub fn generate_s(self) -> SMeshResult<(SMesh, CubeData)> {
+    pub fn generate(self) -> SMeshResult<(SMesh, CubeData)> {
         let n = self.subdivisions;
         let delta = 1.0 / (n as f32);
 
