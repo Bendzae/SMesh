@@ -32,7 +32,7 @@ impl SMesh {
     }
 
     pub fn extrude_faces(&mut self, faces: Vec<FaceId>) -> SMeshResult<Vec<FaceId>> {
-        self.add_attribute_map::<HalfedgeId>("debug").unwrap();
+        // self.add_attribute_map::<HalfedgeId>("debug").unwrap();
         // Step 1: Collect all unique vertices and create mapping to new vertices
         let mut vertex_map = HashMap::new();
         for &face in faces.iter() {
@@ -65,7 +65,6 @@ impl SMesh {
                     boundary_half_edges.push(half_edge);
                     boundary_vertices.push(half_edge.src_vert().run(self)?);
                     boundary_vertices.push(half_edge.dst_vert().run(self)?);
-                    info!("test");
                 } else {
                     let face = half_edge.face().run(self).ok();
                     if face.is_some() && selected_faces.contains(&face.unwrap()) {
@@ -74,12 +73,12 @@ impl SMesh {
                 }
             }
         }
-
-        for &he in &boundary_half_edges {
-            self.attribute_mut("debug")
-                .unwrap()
-                .insert(he, "red".to_string());
-        }
+        //
+        // for &he in &boundary_half_edges {
+        //     self.attribute_mut("debug")
+        //         .unwrap()
+        //         .insert(he, "red".to_string());
+        // }
 
         // Step 4: Delete the old vertices/faces
         if faces.len() == 1 {
