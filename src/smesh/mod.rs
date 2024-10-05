@@ -16,8 +16,8 @@ pub mod iterators;
 pub mod loops;
 pub mod mesh_query;
 pub mod model;
+pub mod primitives;
 pub mod selection;
 pub mod topological_operations;
 pub mod transform;
 pub mod util;
-
