@@ -237,8 +237,9 @@ fn change_selection_inner(
                     }
                 }
                 if input.just_pressed(KeyCode::KeyD) {
+                    let v = id.src_vert().run(&d.mesh)?;
                     d.mesh.delete_only_edge(id)?;
-                    d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
+                    d.selection = Selection::Vertex(v);
                 }
             }
             Selection::Face(id) => {

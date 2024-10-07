@@ -184,44 +184,42 @@ impl SMesh {
         let adjust_edges = f.halfedges(self).collect_vec();
         // remove face id from he's
         for he in adjust_edges {
-            self.get_mut(he).set_face(None)?;
+            self.get_mut(he).set_face(None).ok();
         }
         self.get_mut(f).delete()?;
         Ok(())
     }
 
-    // Delete "only" the edge without deleting any of its connected elements
+    // Delete "only" the edge without deleting any of its connected vertices
+    // Does delete incident faces
     pub fn delete_only_edge(&mut self, e: HalfedgeId) -> SMeshResult<()> {
         if !self.halfedges().contains(&e) {
             // Already deleted
             return Ok(());
         }
-        let mut vert_needs_adjust = HashSet::new();
-        let mut he_needs_adjust = HashSet::new();
-        if let Ok(face) = e.face().run(self) {
-            self.delete_only_face(face).ok();
-        }
-        vert_needs_adjust.insert(e.src_vert().run(self)?);
-        if let Ok(prev) = e.prev().run(self) {
-            he_needs_adjust.insert(prev);
-        }
-        if let Ok(opposite) = e.opposite().run(self) {
-            if let Ok(face) = opposite.face().run(self) {
-                self.delete_only_face(face)?;
-            }
-            if let Ok(prev) = opposite.prev().run(self) {
-                he_needs_adjust.insert(prev);
-            }
-            vert_needs_adjust.insert(opposite.src_vert().run(self)?);
-        }
+        let mut faces_to_delete = HashSet::new();
 
-        self.get_mut(e).delete().ok();
-        for v_id in vert_needs_adjust {
-            self.get_mut(v_id).adjust_outgoing_halfedge()?;
+        for &he in [Ok(e), e.opposite().run(self)].iter().flatten() {
+            if let Ok(face) = he.face().run(self) {
+                faces_to_delete.insert(face);
+            }
+
+            let vert = he.src_vert().run(self)?;
+            let new_outgoing = he.opposite().next().run(self).ok();
+            self.get_mut(vert).set_halfedge(new_outgoing)?;
+
+            if let Ok(prev) = he.prev().run(self) {
+                let new_next = he.opposite().next().run(self).ok();
+                self.get_mut(prev).set_next(new_next)?;
+            }
+            if let Ok(next) = he.next().run(self) {
+                let new_prev = he.opposite().prev().run(self).ok();
+                self.get_mut(next).set_prev(new_prev)?;
+            }
         }
-        for h_id in he_needs_adjust {
-            let new_next = h_id.dst_vert().halfedge().run(self).ok();
-            self.get_mut(h_id).set_next(new_next).ok();
+        self.get_mut(e).delete()?;
+        for f in faces_to_delete {
+            self.delete_only_face(f)?;
         }
         Ok(())
     }
@@ -395,7 +393,7 @@ impl SMesh {
         Ok(())
     }
 
-    fn remove_edge_helper(&mut self, h: HalfedgeId) -> SMeshResult<()> {
+    pub fn remove_edge_helper(&mut self, h: HalfedgeId) -> SMeshResult<()> {
         let hn = h.next().run(self)?;
         let hp = h.prev().run(self)?;
 

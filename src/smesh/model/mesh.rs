@@ -334,12 +334,11 @@ impl MeshMutator<'_, HalfedgeId> {
         Ok(())
     }
 
-    pub fn delete(mut self) -> SMeshResult<()> {
-        if let Some(h) = self.conn.halfedges.remove(self.value) {
-            if let Some(o) = h.opposite {
-                self.conn.halfedges.remove(o);
-            }
+    pub fn delete(self) -> SMeshResult<()> {
+        if let Ok(o) = self.value.opposite().run(self.conn) {
+            self.conn.halfedges.remove(o);
         }
+        self.conn.halfedges.remove(self.value);
         Ok(())
     }
 }
