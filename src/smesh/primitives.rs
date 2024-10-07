@@ -5,6 +5,10 @@ use itertools::Itertools;
 
 use crate::prelude::*;
 
+pub trait Primitive<T> {
+    fn generate(self) -> SMeshResult<(SMesh, T)>;
+}
+
 pub struct Cube {
     pub subdivision: U16Vec3,
 }
@@ -13,8 +17,8 @@ pub struct CubeData {
     pub front_bottom_left_vertex: VertexId,
 }
 
-impl Cube {
-    pub fn generate(self) -> SMeshResult<(SMesh, CubeData)> {
+impl Primitive<CubeData> for Cube {
+    fn generate(self) -> SMeshResult<(SMesh, CubeData)> {
         let n_x = self.subdivision.x;
         let n_y = self.subdivision.y;
         let n_z = self.subdivision.z;
@@ -132,8 +136,8 @@ pub struct IcosphereData {
     pub bottom_vertex: VertexId,
 }
 
-impl Icosphere {
-    pub fn generate(self) -> SMeshResult<(SMesh, IcosphereData)> {
+impl Primitive<IcosphereData> for Icosphere {
+    fn generate(self) -> SMeshResult<(SMesh, IcosphereData)> {
         let subdivisions = self.subdivisions;
         // Create an initial icosahedron
         let mut smesh = SMesh::new();
@@ -280,5 +284,23 @@ fn get_midpoint(
         let mid_vertex = smesh.add_vertex(mid_point);
         cache.insert(key, mid_vertex);
         mid_vertex
+    }
+}
+
+pub struct Quad;
+pub struct QuadData {
+    pub face: FaceId,
+}
+
+impl Primitive<QuadData> for Quad {
+    fn generate(self) -> SMeshResult<(SMesh, QuadData)> {
+        let mut smesh = SMesh::new();
+        let v0 = smesh.add_vertex(vec3(-0.5, 0.0, 0.5));
+        let v1 = smesh.add_vertex(vec3(0.5, 0.0, 0.5));
+        let v2 = smesh.add_vertex(vec3(0.5, 0.0, -0.5));
+        let v3 = smesh.add_vertex(vec3(-0.5, 0.0, -0.5));
+        let face = smesh.make_quad(v0, v1, v2, v3)?;
+        smesh.recalculate_normals()?;
+        Ok((smesh, QuadData { face }))
     }
 }
