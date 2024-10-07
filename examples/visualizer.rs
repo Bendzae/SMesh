@@ -1,8 +1,11 @@
+use attribute::CustomAttributeMapOps;
 use bevy::color::palettes::css::{BLACK, GREEN, ORANGE_RED, TURQUOISE, WHITE, YELLOW};
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
+use itertools::Itertools;
+use primitives::{Icosphere, Primitive};
 use smesh::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -22,26 +25,63 @@ struct DebugRenderSMesh {
 #[derive(Component)]
 struct UiTag;
 
+fn extrude_faces() -> SMeshResult<(SMesh, VertexId)> {
+    // Construct SMesh
+    let mut smesh = SMesh::new();
+    // Make some connected faces
+    let v0 = smesh.add_vertex(vec3(-1.0, 0.0, 1.0));
+    let v1 = smesh.add_vertex(vec3(1.0, 0.0, 1.0));
+    let v2 = smesh.add_vertex(vec3(1.0, 0.0, -1.0));
+    let v3 = smesh.add_vertex(vec3(-1.0, 0.0, -1.0));
+
+    let v4 = smesh.add_vertex(vec3(3.0, 0.0, 1.0));
+    let v5 = smesh.add_vertex(vec3(3.0, 0.0, -1.0));
+
+    let v6 = smesh.add_vertex(vec3(-1.0, 0.0, -3.0));
+    let v7 = smesh.add_vertex(vec3(1.0, 0.0, -3.0));
+
+    let f0 = smesh.make_face(vec![v0, v1, v2, v3])?;
+    let f1 = smesh.make_face(vec![v1, v4, v5, v2])?;
+    let f2 = smesh.make_face(vec![v3, v2, v7, v6])?;
+
+    let faces = smesh.extrude_faces(vec![f0, f1, f2])?;
+    // let faces = smesh.extrude_faces(vec![f0, f1])?;
+    // let faces = smesh.extrude_faces(vec![f0])?;
+    smesh.translate(faces, Vec3::Y * 2.0)?;
+
+    smesh.recalculate_normals()?;
+    // smesh.flip_normals()?;
+    Ok((smesh, v0))
+}
+
 fn init_system(mut commands: Commands) {
     // Extrude test
-    let mut smesh = SMesh::new();
-    let v0 = smesh.add_vertex(vec3(-1.0, -1.0, 0.0));
-    let v1 = smesh.add_vertex(vec3(-1.0, -1.0, 1.0));
-    let v2 = smesh.add_vertex(vec3(1.0, -1.0, 1.0));
-    let v3 = smesh.add_vertex(vec3(1.0, -1.0, 0.0));
+    // let (smesh, v0) = extrude_faces().unwrap();
+    // let (mut smesh, data) = Cube {
+    //     subdivision: U16Vec3::new(4, 3, 2),
+    // }
+    // .generate()
+    // .unwrap();
 
-    let _f0 = smesh.make_face(vec![v0, v1, v2, v3]).unwrap();
-    let e1 = smesh
-        .extrude_edge(v2.halfedge_to(v3).run(&smesh).unwrap())
+    let (mut smesh, data) = Icosphere { subdivisions: 2 }.generate().unwrap();
+    smesh
+        .scale(
+            smesh.vertices().collect_vec(),
+            Vec3::splat(3.0),
+            transform::Pivot::MeshCog,
+        )
         .unwrap();
-    smesh.translate(e1, Vec3::Y).unwrap();
-    let e1 = smesh.extrude_edge(e1).unwrap();
-    smesh.translate(e1, Vec3::Y + Vec3::X).unwrap();
-    smesh.recalculate_normals().unwrap();
+    smesh
+        .scale(
+            smesh.vertices().collect_vec(),
+            Vec3::splat(3.0),
+            transform::Pivot::MeshCog,
+        )
+        .unwrap();
     commands.spawn((
         DebugRenderSMesh {
             mesh: smesh,
-            selection: Selection::Vertex(v0),
+            selection: Selection::Vertex(data.top_vertex),
         },
         TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
     ));
@@ -89,7 +129,17 @@ fn debug_draw_smesh(
         let color = if debug_smesh.selection == Selection::Halfedge(he_id) {
             ORANGE_RED
         } else {
-            TURQUOISE
+            match mesh.attribute::<HalfedgeId>("debug") {
+                Some(debug) => {
+                    let t: Option<String> = debug.get(he_id);
+                    if let Some(_color) = t {
+                        YELLOW
+                    } else {
+                        TURQUOISE
+                    }
+                }
+                None => TURQUOISE,
+            }
         };
         let edge_normal = ((v_src.normal(mesh)? + v_dst.normal(mesh)?) / 2.0).normalize();
         draw_halfedge(gizmos, v_src_pos, v_dst_pos, edge_normal, color);
@@ -165,7 +215,7 @@ fn change_selection_inner(
                     d.selection = Selection::Halfedge(id.cw_rotated_neighbour().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::KeyV) {
-                    d.selection = Selection::Vertex(id.vert().run(&d.mesh)?);
+                    d.selection = Selection::Vertex(id.src_vert().run(&d.mesh)?);
                 }
                 if input.just_pressed(KeyCode::KeyF) {
                     d.selection = Selection::Face(id.face().run(&d.mesh)?);
@@ -187,7 +237,7 @@ fn change_selection_inner(
                     }
                 }
                 if input.just_pressed(KeyCode::KeyD) {
-                    d.mesh.delete_edge(id)?;
+                    d.mesh.delete_only_edge(id)?;
                     d.selection = Selection::Vertex(d.mesh.vertices().next().unwrap());
                 }
             }

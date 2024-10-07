@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, f32::consts::PI, usize};
 
 use glam::{vec3, U16Vec3};
 use itertools::Itertools;
 
-use crate::prelude::*;
+use crate::{bail, prelude::*};
 
 pub trait Primitive<T> {
     fn generate(self) -> SMeshResult<(SMesh, T)>;
@@ -302,5 +302,44 @@ impl Primitive<QuadData> for Quad {
         let face = smesh.make_quad(v0, v1, v2, v3)?;
         smesh.recalculate_normals()?;
         Ok((smesh, QuadData { face }))
+    }
+}
+
+pub struct Circle {
+    pub segments: usize,
+}
+pub struct CircleData {
+    pub face: FaceId,
+}
+
+impl Primitive<CircleData> for Circle {
+    fn generate(self) -> SMeshResult<(SMesh, CircleData)> {
+        if self.segments < 3 {
+            bail!("A circle must have at least 3 segments.");
+        }
+
+        // Construct SMesh
+        let mut smesh = SMesh::new();
+        let radius = 0.5;
+        let angle_increment = 2.0 * PI / self.segments as f32;
+
+        let mut vertex_indices = Vec::with_capacity(self.segments);
+
+        // Generate vertices around the circumference
+        for i in 0..self.segments {
+            let angle = i as f32 * angle_increment;
+            let x = radius * angle.cos();
+            let y = 0.0; // Circle lies in the XZ-plane
+            let z = -radius * angle.sin();
+            let position = vec3(x, y, z);
+            let vertex = smesh.add_vertex(position);
+            vertex_indices.push(vertex);
+        }
+
+        // Create a single face with the vertices
+        let face = smesh.make_face(vertex_indices.clone())?;
+
+        smesh.recalculate_normals()?;
+        Ok((smesh, CircleData { face }))
     }
 }
