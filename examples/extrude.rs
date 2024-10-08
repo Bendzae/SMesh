@@ -1,11 +1,8 @@
-use std::f32::consts::PI;
-
 use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
 use itertools::Itertools;
-use primitives::Quad;
 use smesh::prelude::*;
 use transform::Pivot;
 
@@ -28,12 +25,12 @@ fn extrude_faces() -> SMeshResult<SMesh> {
     let f1 = smesh.make_face(vec![v1, v4, v5, v2])?;
     let f2 = smesh.make_face(vec![v3, v2, v7, v6])?;
 
+    // Extrude all faces and move them up
     let faces = smesh.extrude_faces(vec![f0, f1, f2])?;
-    // let faces = smesh.extrude_faces(vec![f0])?;
     smesh.translate(faces.clone(), Vec3::Y * 2.0)?;
 
+    // Extrude two of the new faces again, move and scale them
     let faces = smesh.extrude_faces(faces[..2].to_vec())?;
-    // let faces = smesh.extrude_faces(vec![faces[0]])?;
     smesh.translate(faces.clone(), Vec3::Y * 2.0)?.scale(
         faces,
         Vec3::splat(0.7),
