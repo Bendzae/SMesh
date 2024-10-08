@@ -142,7 +142,12 @@ impl VertexOps for MeshQueryBuilder<VertexId> {
     }
 
     fn is_boundary(&self, mesh: &SMesh) -> bool {
-        self.halfedge().face().run(mesh).is_err()
+        for he in self.clone().halfedges(mesh) {
+            if he.is_boundary(mesh) {
+                return true;
+            }
+        }
+        false
     }
 
     fn is_isolated(&self, mesh: &SMesh) -> bool {
@@ -190,6 +195,7 @@ impl VertexOps for VertexId {
     }
 
     fn is_boundary(&self, mesh: &SMesh) -> bool {
+        // TODO: fix
         self.q().is_boundary(mesh)
     }
 

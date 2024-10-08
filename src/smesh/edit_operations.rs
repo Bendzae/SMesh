@@ -66,7 +66,7 @@ impl SMesh {
                     boundary_vertices.push(half_edge.src_vert().run(self)?);
                     boundary_vertices.push(half_edge.dst_vert().run(self)?);
                 } else {
-                    let face = half_edge.face().run(self).ok();
+                    let face = opp.face().run(self).ok();
                     if face.is_some() && selected_faces.contains(&face.unwrap()) {
                         inner_half_edges.push(half_edge);
                     }
@@ -93,7 +93,7 @@ impl SMesh {
             self.delete_vertex(vertex)?;
         }
         for he in inner_half_edges {
-            self.delete_only_edge(he).ok();
+            self.delete_only_edge(he)?;
         }
 
         // Step 5: Create side faces along boundary edges
@@ -109,7 +109,7 @@ impl SMesh {
         let mut new_faces = Vec::new();
         for &face in faces.iter() {
             let old_vertices = &face_vertex_map[&face];
-            let mut new_vertices = old_vertices.iter().map(|&v| vertex_map[&v]).collect_vec();
+            let new_vertices = old_vertices.iter().map(|&v| vertex_map[&v]).collect_vec();
             let new_face = self.make_face(new_vertices)?;
             new_faces.push(new_face);
         }
