@@ -19,6 +19,8 @@ thiserror = "1.0.63"
 # Adapter dependencies
 bevy = { version = "0.14", default-features = false, features = [
   "bevy_pbr",
+  "bevy_ui",
+  "bevy_gizmos",
 ], optional = true }
 
 [dev-dependencies]
