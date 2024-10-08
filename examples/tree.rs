@@ -3,7 +3,10 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
 use primitives::{Circle, Primitive};
-use smesh::prelude::*;
+use smesh::{
+    adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
+    prelude::*,
+};
 
 fn generate_tree() -> SMeshResult<SMesh> {
     let (mut smesh, face) = Circle { segments: 8 }.generate()?;
@@ -18,11 +21,19 @@ fn init_system(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     let smesh = generate_tree().unwrap();
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(smesh)),
-        material: materials.add(StandardMaterial::from(Color::rgb(1.0, 0.4, 0.4))),
-        ..default()
-    });
+    let v0 = smesh.vertices().next().unwrap();
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(smesh.clone())),
+            material: materials.add(StandardMaterial::from(Color::rgb(1.0, 0.4, 0.4))),
+            ..default()
+        },
+        DebugRenderSMesh {
+            mesh: smesh,
+            selection: Selection::Vertex(v0),
+            visible: true,
+        },
+    ));
 
     // Light
     commands.spawn(PointLightBundle {
@@ -51,6 +62,7 @@ fn main() {
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
+            SMeshDebugDrawPlugin,
             // WorldInspectorPlugin::default(),
         ))
         .add_systems(Startup, init_system)
