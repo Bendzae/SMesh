@@ -27,6 +27,7 @@ bevy = { version = "0.14", default-features = false, features = [
 bevy = "0.14.2"
 bevy_panorbit_camera = "0.19.3"
 bevy-inspector-egui = "0.26"
+fastrand = "2.1.1"
 
 
 [features]

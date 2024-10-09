@@ -1,17 +1,47 @@
-use bevy::prelude::*;
+use core::f32;
+
+use bevy::{math::cubic_splines::LinearSpline, prelude::*};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
-use glam::vec3;
+use glam::{i32, vec3};
 
 use primitives::{Circle, Primitive};
 use smesh::{
     adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
     prelude::*,
 };
+use transform::Pivot;
 
 fn generate_tree() -> SMeshResult<SMesh> {
-    let (mut smesh, face) = Circle { segments: 8 }.generate()?;
-    let face = smesh.extrude_faces(vec![face.face])?;
-    smesh.translate(face, Vec3::Y)?;
+    let height = 3.0;
+    let min_radius = 0.1;
+    let max_radius = 0.3;
+    let res_y = 3;
+    let number_of_curve_points = (height * res_y as f32).floor() as usize;
+    let control_points = &[
+        vec3(0.0, 0.0, 0.0),
+        vec3(0.2, 0.5, 0.1),
+        vec3(0.0, 1.0, 0.3),
+    ];
+    let curve = LinearSpline::new(control_points).to_curve();
+
+    let (mut smesh, data) = Circle { segments: 8 }.generate()?;
+
+    let mut faces = vec![data.face];
+    for p in curve.iter_positions(number_of_curve_points) {
+        let pos = vec3(p.x, p.y * height, p.z);
+        let new_faces = smesh.extrude_faces(faces.clone())?;
+        smesh
+            .set_position(new_faces.clone(), pos, Pivot::SelectionCog)?
+            .scale(new_faces.clone(), Vec3::splat(0.9), Pivot::SelectionCog)?
+            .rotate(
+                new_faces.clone(),
+                Quat::from_rotation_y(f32::consts::PI / 8.0),
+                Pivot::SelectionCog,
+            )?;
+
+        faces = new_faces;
+    }
+
     smesh.recalculate_normals()?;
     Ok(smesh)
 }

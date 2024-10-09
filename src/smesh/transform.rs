@@ -50,6 +50,23 @@ impl SMesh {
         Ok(self)
     }
 
+    pub fn set_position<S: Into<MeshSelection>>(
+        &mut self,
+        selection: S,
+        translation: Vec3,
+        pivot: Pivot,
+    ) -> SMeshResult<&mut SMesh> {
+        let s = selection.into();
+        let p = pivot.calculate(self, s.clone())?;
+        let vertices = s.resolve_to_vertices(self)?;
+        for id in vertices {
+            let mut pos = id.position(self)?;
+            pos -= p;
+            self.positions.insert(id, pos + translation);
+        }
+        Ok(self)
+    }
+
     /// Scales the selected vertices by a given factor around a pivot point.
     ///
     /// # Parameters

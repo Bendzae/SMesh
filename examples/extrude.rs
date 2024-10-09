@@ -41,7 +41,7 @@ fn extrude_faces() -> SMeshResult<SMesh> {
     smesh.scale(
         smesh.vertices().collect_vec(),
         Vec3::splat(0.5),
-        Pivot::MeshCog,
+        Pivot::Origin,
     )?;
     smesh.recalculate_normals()?;
     Ok(smesh)
@@ -69,7 +69,7 @@ fn init_system(
     // Camera
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 1.5, 5.0)),
+            transform: Transform::from_translation(Vec3::new(0.0, 5.0, 7.0)),
             ..default()
         },
         PanOrbitCamera::default(),
