@@ -22,9 +22,9 @@ struct TreeParameters {
     #[inspector(min = 0.0, max = 50.0)]
     pub height: f32,
     #[inspector(min = 0.2, max = 5.0)]
-    pub min_radius: f32,
+    pub top_radius: f32,
     #[inspector(min = 0.2, max = 5.0)]
-    pub max_radius: f32,
+    pub bottom_radius: f32,
     #[inspector(min = 1, max = 10)]
     pub resolution_y: usize,
     pub seed: u64,
@@ -37,23 +37,29 @@ fn generate_tree(params: TreeParameters) -> SMeshResult<SMesh> {
     let rng = &mut fastrand::Rng::with_seed(params.seed);
 
     let number_of_curve_points = (params.height * params.resolution_y as f32).floor() as usize;
-    let scale_factor = (params.max_radius - params.min_radius) / number_of_curve_points as f32;
+    let scale_factor = (params.bottom_radius - params.top_radius) / number_of_curve_points as f32;
     let control_points = &[
         vec3(0.0, 0.0, 0.0),
         vec3(rng.f32_range(-0.4..0.4), 0.5, rng.f32_range(-0.4..0.4)),
         vec3(rng.f32_range(-0.4..0.4), 1.0, rng.f32_range(-0.4..0.4)),
     ];
     let curve = LinearSpline::new(control_points).to_curve();
+    let mut curve_iter = curve.iter_positions(number_of_curve_points);
 
     let (mut smesh, data) = Circle { segments: 8 }.generate()?;
     smesh.scale(
         smesh.vertices().collect_vec(),
-        Vec3::splat(params.max_radius),
+        Vec3::splat(params.bottom_radius),
         Pivot::MeshCog,
+    )?;
+    smesh.set_position(
+        smesh.vertices().collect_vec(),
+        curve_iter.next().unwrap(),
+        Pivot::SelectionCog,
     )?;
 
     let mut faces = vec![data.face];
-    for p in curve.iter_positions(number_of_curve_points) {
+    for p in curve_iter {
         let pos = vec3(p.x, p.y * params.height, p.z);
         let new_faces = smesh.extrude_faces(faces.clone())?;
         smesh
@@ -102,8 +108,8 @@ fn update_tree_system(
 fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
     commands.insert_resource(TreeParameters {
         height: 3.0,
-        min_radius: 0.7,
-        max_radius: 1.0,
+        top_radius: 0.7,
+        bottom_radius: 1.0,
         resolution_y: 3,
         seed: 0,
     });
