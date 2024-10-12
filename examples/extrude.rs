@@ -1,9 +1,13 @@
 use bevy::prelude::*;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
 use itertools::Itertools;
-use smesh::prelude::*;
+use smesh::{
+    adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
+    prelude::*,
+};
 use transform::Pivot;
 
 fn extrude_faces() -> SMeshResult<SMesh> {
@@ -52,13 +56,27 @@ fn init_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let extrude_mesh = extrude_faces().unwrap();
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Mesh::from(extrude_mesh)),
-        material: materials.add(StandardMaterial::from(Color::rgb(0.4, 0.4, 1.0))),
-        transform: Transform::from_translation(vec3(0.0, 0.0, 0.0)),
-        ..default()
-    });
+    let mut extrude_mesh = extrude_faces().unwrap();
+    let v0 = extrude_mesh.vertices().next().unwrap();
+    extrude_mesh
+        .subdivide(extrude_mesh.vertices().collect_vec())
+        .unwrap();
+
+    extrude_mesh.recalculate_normals().unwrap();
+
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Mesh::from(extrude_mesh.clone())),
+            material: materials.add(StandardMaterial::from(Color::rgb(0.4, 0.4, 1.0))),
+            transform: Transform::from_translation(vec3(0.0, 0.0, 0.0)),
+            ..default()
+        },
+        DebugRenderSMesh {
+            mesh: extrude_mesh,
+            selection: Selection::Vertex(v0),
+            visible: true,
+        },
+    ));
 
     // Light
     commands.spawn(PointLightBundle {
@@ -87,7 +105,8 @@ fn main() {
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
-            // WorldInspectorPlugin::default(),
+            SMeshDebugDrawPlugin,
+            EguiPlugin,
         ))
         .add_systems(Startup, init_system)
         .run();

@@ -19,6 +19,7 @@ use bevy::{
         node_bundles::{NodeBundle, TextBundle},
         FlexDirection, Style, UiRect, Val,
     },
+    utils::info,
 };
 use glam::{bool, Quat, Vec2, Vec3};
 use itertools::Itertools;
@@ -182,14 +183,11 @@ fn debug_draw_smesh(
                 None => TURQUOISE,
             }
         };
-        let edge_normal = ((v_src.normal(mesh)? + v_dst.normal(mesh)?) / 2.0).normalize();
+        let mut edge_normal = ((v_src.normal(mesh)? + v_dst.normal(mesh)?) / 2.0).normalize();
+        if edge_normal.is_nan() {
+            edge_normal = Vec3::Y;
+        }
         draw_halfedge(gizmos, v_src_pos, v_dst_pos, edge_normal, color);
-        // let color = if debug_smesh.selection == Selection::Halfedge(opposite?) {
-        //     Color::ORANGE_RED
-        // } else {
-        //     Color::TURQUOISE
-        // };
-        // draw_halfedge(&mut gizmos, v_dst_pos, v_src_pos, color);
     }
     // Faces
     for face_id in mesh.faces() {
@@ -274,6 +272,7 @@ fn change_selection_inner(
                     let pos = (mesh.positions[v0] + mesh.positions[v1]) / 2.0;
                     let v = mesh.add_vertex(pos);
                     let he = mesh.insert_vertex(id, v);
+                    mesh.recalculate_normals()?;
                     match he {
                         Ok(he) => {
                             d.selection = Selection::Halfedge(he);

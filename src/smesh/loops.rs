@@ -3,7 +3,7 @@ use crate::prelude::{HalfedgeId, HalfedgeOps, RunQuery, SMesh};
 const MAX_LOOP_ITERATIONS: usize = 100;
 
 impl SMesh {
-    fn halfedge_loop(&self, h0: HalfedgeId) -> Vec<HalfedgeId> {
+    pub fn halfedge_loop(&self, h0: HalfedgeId) -> Vec<HalfedgeId> {
         let mut ret = vec![h0];
         let mut h = h0;
 

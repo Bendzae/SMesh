@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::{bail, prelude::*};
 use bevy::utils::default;
+use itertools::Itertools;
 
 use super::mesh_query::{HalfedgeOps, RunQuery};
 
@@ -46,6 +47,23 @@ impl MeshSelection {
             }
         }
         Ok(faces)
+    }
+
+    pub fn resolve_to_halfedges(&self, smesh: &SMesh) -> SMeshResult<HashSet<HalfedgeId>> {
+        let mut edges = self.halfedges.clone();
+        for face in &self.faces {
+            for he in face.halfedges(smesh) {
+                edges.insert(he);
+            }
+        }
+        for v in &self.vertices {
+            for he in v.halfedges(smesh) {
+                if self.vertices.contains(&he.dst_vert().run(smesh)?) {
+                    edges.insert(he);
+                }
+            }
+        }
+        Ok(edges)
     }
 }
 

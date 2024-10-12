@@ -1,5 +1,7 @@
 use bevy::color::palettes::css::{BLACK, WHITE};
 use bevy::prelude::*;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use itertools::Itertools;
@@ -53,7 +55,7 @@ fn main() {
             DefaultPlugins,
             PanOrbitCameraPlugin,
             SMeshDebugDrawPlugin,
-            // WorldInspectorPlugin::default(),
+            EguiPlugin,
         ))
         .add_systems(Startup, init_system)
         .run();

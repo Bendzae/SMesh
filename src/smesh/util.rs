@@ -85,4 +85,14 @@ impl SMesh {
 
         Ok(())
     }
+    pub fn get_face_centroid(&self, face: FaceId) -> SMeshResult<Vec3> {
+        let face_vertices = face.vertices(self).collect_vec();
+        let mut centroid = Vec3::ZERO;
+        for v in face.vertices(self) {
+            let vertex_position = v.position(self)?;
+            centroid += vertex_position;
+        }
+        centroid /= face_vertices.len() as f32;
+        Ok(centroid)
+    }
 }
