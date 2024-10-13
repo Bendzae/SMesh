@@ -1,11 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use attribute::CustomAttributeMapOps;
-use bevy::{log::info, utils::info};
-use glam::Vec3;
 use itertools::Itertools;
 
-use crate::{adapters::bevy::Selection, bail, prelude::*};
+use crate::{bail, prelude::*};
 
 /// Edit operations
 impl SMesh {
@@ -213,7 +210,10 @@ impl SMesh {
         Ok(new_edges)
     }
 
-    pub fn subdivide<T: Into<MeshSelection>>(&mut self, selection: T) -> SMeshResult<()> {
+    pub fn subdivide<T: Into<MeshSelection>>(
+        &mut self,
+        selection: T,
+    ) -> SMeshResult<MeshSelection> {
         let s: MeshSelection = selection.into();
         let faces = s.clone().resolve_to_faces(self)?;
         let halfedges = s.clone().resolve_to_halfedges(self)?;
@@ -224,43 +224,67 @@ impl SMesh {
             .collect::<HashMap<FaceId, VertexId>>();
 
         let mut he_cache = HashSet::new();
+        // Returned selection
+        let mut selection = MeshSelection::new();
         for he in halfedges {
+            let he_opposite = he.opposite().run(self)?;
             if he_cache.contains(&he) {
                 continue;
             }
             let p0 = he.src_vert().position(self)?;
             let p1 = he.dst_vert().position(self)?;
             let v = self.add_vertex(0.5 * (p0 + p1));
-            self.insert_vertex(he, v)?;
+            let new_he = self.insert_vertex(he, v)?;
             he_cache.insert(he);
-            he_cache.insert(he.opposite().run(self)?);
+            he_cache.insert(he_opposite);
+            selection.insert(he);
+            selection.insert(he_opposite);
+            selection.insert(new_he);
+            selection.insert(new_he.opposite().run(self)?);
         }
         for f in faces {
             let valence = f.valence(self) / 2;
+            let corner = face_corners[&f];
+            let corner_edge = f
+                .halfedges(self)
+                .find(|he| he.src_vert().run(self).unwrap() == corner)
+                .unwrap();
+            let he_loop = self.halfedge_loop(corner_edge.next().run(self)?);
             if valence == 3 {
-                todo!()
+                self.delete_only_face(f)?;
+                for (h0, h1) in he_loop.iter().circular_tuple_windows().step_by(2) {
+                    let f = self.make_triangle(
+                        h0.src_vert().run(self)?,
+                        h1.src_vert().run(self)?,
+                        h1.dst_vert().run(self)?,
+                    )?;
+                    selection.insert(f);
+                }
+                // Middle tri
+                let f = self.make_triangle(
+                    he_loop[0].src_vert().run(self)?,
+                    he_loop[2].src_vert().run(self)?,
+                    he_loop[4].src_vert().run(self)?,
+                )?;
+                selection.insert(f);
             }
             if valence == 4 {
                 let center = self.get_face_centroid(f)?;
                 let v_c = self.add_vertex(center);
-                let corner = face_corners[&f];
-                let corner_edge = f
-                    .halfedges(self)
-                    .find(|he| he.src_vert().run(self).unwrap() == corner)
-                    .unwrap();
-                let he_loop = self.halfedge_loop(corner_edge.next().run(self)?);
                 self.delete_only_face(f)?;
                 for (h0, h1) in he_loop.iter().circular_tuple_windows().step_by(2) {
-                    self.make_quad(
+                    let f = self.make_quad(
                         h0.src_vert().run(self)?,
                         h1.src_vert().run(self)?,
                         h1.dst_vert().run(self)?,
                         v_c,
                     )?;
+                    selection.insert(f);
                 }
             }
+            // valence > 4: ngons simply stay as ngons (same behaviour as blender)
         }
 
-        Ok(())
+        Ok(selection)
     }
 }

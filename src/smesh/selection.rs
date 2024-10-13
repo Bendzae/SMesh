@@ -67,6 +67,28 @@ impl MeshSelection {
     }
 }
 
+pub trait MeshSelectionOps<T> {
+    fn insert(&mut self, item: T);
+}
+
+impl MeshSelectionOps<VertexId> for MeshSelection {
+    fn insert(&mut self, item: VertexId) {
+        self.vertices.insert(item);
+    }
+}
+
+impl MeshSelectionOps<HalfedgeId> for MeshSelection {
+    fn insert(&mut self, item: HalfedgeId) {
+        self.halfedges.insert(item);
+    }
+}
+
+impl MeshSelectionOps<FaceId> for MeshSelection {
+    fn insert(&mut self, item: FaceId) {
+        self.faces.insert(item);
+    }
+}
+
 impl From<VertexId> for MeshSelection {
     fn from(value: VertexId) -> Self {
         Self::from_iter(vec![value])

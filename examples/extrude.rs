@@ -36,10 +36,18 @@ fn extrude_faces() -> SMeshResult<SMesh> {
     // Extrude two of the new faces again, move and scale them
     let faces = smesh.extrude_faces(faces[..2].to_vec())?;
     smesh.translate(faces.clone(), Vec3::Y * 2.0)?.scale(
-        faces,
+        faces.clone(),
         Vec3::splat(0.7),
         Pivot::SelectionCog,
     )?;
+
+    let verts = faces[0].vertices(&smesh).collect_vec();
+    let v = smesh.add_vertex(vec3(0.3, 5.0, 0.0));
+    smesh.delete_only_face(faces[0])?;
+    smesh.make_triangle(verts[0], verts[1], v)?;
+    smesh.make_triangle(verts[1], verts[2], v)?;
+    smesh.make_triangle(verts[2], verts[3], v)?;
+    smesh.make_triangle(verts[3], verts[0], v)?;
 
     smesh.translate(smesh.vertices().collect_vec(), vec3(-1.0, 0.0, 1.0))?;
     smesh.scale(
