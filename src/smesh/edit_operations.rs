@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
+use slotmap::SecondaryMap;
 
 use crate::{bail, prelude::*};
 
@@ -286,5 +287,97 @@ impl SMesh {
         }
 
         Ok(selection)
+    }
+
+    pub fn combine_with(&mut self, other: SMesh) -> SMeshResult<()> {
+        // Copy verts
+        let mut v_map = HashMap::new();
+        for (id, v) in other.connectivity.vertices {
+            let id_new = self.vertices_mut().insert(v.clone());
+            v_map.insert(id, id_new);
+        }
+        // Copy faces
+        let mut f_map = HashMap::new();
+        for (id, f) in other.connectivity.faces {
+            let id_new = self.faces_mut().insert(f.clone());
+            f_map.insert(id, id_new);
+        }
+        // Copy halfedges
+        let mut he_map = HashMap::new();
+        for (id, he) in other.connectivity.halfedges {
+            let mut halfedge = he.clone();
+            halfedge.vertex = v_map[&halfedge.vertex];
+            if let Some(f) = halfedge.face {
+                halfedge.face = Some(f_map[&f]);
+            }
+            let id_new = self.halfedges_mut().insert(halfedge.clone());
+            he_map.insert(id, id_new);
+        }
+        // Remap remaining ids in halfedges
+        for id in he_map.values() {
+            let he = self.halfedges_mut().get_mut(*id).unwrap();
+            if let Some(opp) = he.opposite {
+                he.opposite = Some(he_map[&opp]);
+            }
+            if let Some(next) = he.next {
+                he.next = Some(he_map[&next]);
+            }
+            if let Some(prev) = he.prev {
+                he.prev = Some(he_map[&prev]);
+            }
+        }
+        // Remap remaining ids in vertices
+        for id in v_map.values() {
+            if let Ok(he) = id.halfedge().run(self) {
+                self.get_mut(*id).set_halfedge(Some(he_map[&he]))?;
+            }
+        }
+
+        // Remap remaining ids in faces
+        for id in f_map.values() {
+            if let Ok(he) = id.halfedge().run(self) {
+                self.get_mut(*id).set_halfedge(Some(he_map[&he]))?;
+            }
+        }
+
+        // Copy attributes
+        for (id, value) in other.positions {
+            self.positions.insert(v_map[&id], value);
+        }
+        if let Some(vertex_normals) = other.vertex_normals {
+            for (id, value) in vertex_normals {
+                if self.vertex_normals.is_none() {
+                    self.vertex_normals = Some(SecondaryMap::new());
+                }
+                self.vertex_normals
+                    .as_mut()
+                    .unwrap()
+                    .insert(v_map[&id], value);
+            }
+        }
+        if let Some(face_normals) = other.face_normals {
+            for (id, value) in face_normals {
+                if self.face_normals.is_none() {
+                    self.face_normals = Some(SecondaryMap::new());
+                }
+                self.face_normals
+                    .as_mut()
+                    .unwrap()
+                    .insert(f_map[&id], value);
+            }
+        }
+        if let Some(uvs) = other.uvs {
+            for (id, value) in uvs {
+                if self.uvs.is_none() {
+                    self.uvs = Some(SecondaryMap::new());
+                }
+                self.uvs.as_mut().unwrap().insert(v_map[&id], value);
+            }
+        }
+        // TODO: copy custom attributes 
+        // for attr in self.vertex_attributes {
+        //
+        // }
+        Ok(())
     }
 }

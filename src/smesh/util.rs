@@ -95,4 +95,8 @@ impl SMesh {
         centroid /= face_vertices.len() as f32;
         Ok(centroid)
     }
+
+    pub fn select_all(&self) -> MeshSelection {
+        self.vertices().collect_vec().into()
+    }
 }
