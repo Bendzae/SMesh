@@ -5,6 +5,7 @@ use bevy::{
     color::palettes::css::ROSY_BROWN,
     math::{cubic_splines::LinearSpline, VectorSpace},
     prelude::*,
+    reflect::List,
 };
 use bevy_inspector_egui::{
     inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
@@ -43,11 +44,17 @@ fn generate_tree(params: TreeParameters) -> SMeshResult<SMesh> {
 
     let number_of_curve_points = (params.height * params.resolution_y as f32).floor() as usize;
     let scale_factor = (params.bottom_radius - params.top_radius) / number_of_curve_points as f32;
-    let control_points = &[
-        vec3(0.0, 0.0, 0.0),
-        vec3(rng.f32_range(-0.5..0.5), 0.5, rng.f32_range(-0.5..0.5)),
-        vec3(rng.f32_range(-0.5..0.5), 1.0, rng.f32_range(-0.5..0.5)),
-    ];
+    let mut control_points = vec![vec3(0.0, 0.0, 0.0)];
+
+    let n_control_points = params.height.floor() as usize;
+    // let n_control_points = 3;
+    for i in (1..n_control_points) {
+        control_points.push(vec3(
+            rng.f32_range(-0.5..0.5),
+            i as f32 / n_control_points as f32,
+            rng.f32_range(-0.5..0.5),
+        ));
+    }
     let curve = LinearSpline::new(control_points).to_curve();
     let mut curve_iter = curve.iter_positions(number_of_curve_points);
 
