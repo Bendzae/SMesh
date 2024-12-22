@@ -18,19 +18,18 @@ The libary uses a slotmap based implementation of the Surface Mesh which takes h
 The goal of this library is to provide a flexible mesh abstraction and
 set of operations to be used for procedural modeling and procedural generation
 of 3D meshes.
+
 ### Examples
 
 ![tree_example](smesh_demo.gif)
 _parameterized procedural mesh generation_
 
-![screenshot](visualizer_screenshot.png)
-_use the the built in visual debug view to understand the topology of you meshes_
+`cargo run --example tree`
 
-`cargo run --example visualizer`
+![extrude_example](extrude_demo.gif)
+_mesh extrusion and manipulation example with the visual debug tools enabled_
 
-There is also an example for the bevy mesh integration:
-
-`cargo run --example bevy_mesh`
+`cargo run --example extrude`
 
 ### Usage
 
