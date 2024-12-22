@@ -73,12 +73,8 @@ fn init_system(
     extrude_mesh.recalculate_normals().unwrap();
 
     commands.spawn((
-        PbrBundle {
-            mesh: meshes.add(Mesh::from(extrude_mesh.clone())),
-            material: materials.add(StandardMaterial::from(Color::rgb(0.4, 0.4, 1.0))),
-            transform: Transform::from_translation(vec3(0.0, 0.0, 0.0)),
-            ..default()
-        },
+        Mesh3d(meshes.add(Mesh::from(extrude_mesh.clone()))),
+        MeshMaterial3d(materials.add(StandardMaterial::from(Color::srgb(0.4, 0.4, 1.0)))),
         DebugRenderSMesh {
             mesh: extrude_mesh,
             selection: Selection::Vertex(v0),
@@ -87,18 +83,17 @@ fn init_system(
     ));
 
     // Light
-    commands.spawn(PointLightBundle {
-        transform: Transform::from_translation(vec3(3.0, 3.0, 4.0)),
-        ..default()
-    });
+    commands.spawn((
+        PointLight::default(),
+        Transform::from_translation(vec3(3.0, 3.0, 4.0)),
+    ));
 
     // Camera
     commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 5.0, 7.0)),
-            ..default()
-        },
+        Camera3d::default(),
+        Transform::from_translation(vec3(0.0, 5.0, 7.0)),
         PanOrbitCamera::default(),
+        Msaa::Sample4,
     ));
 }
 
@@ -109,7 +104,6 @@ fn main() {
             color: Color::WHITE,
             brightness: 300.0,
         })
-        .insert_resource(Msaa::Sample4)
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,

@@ -8,20 +8,17 @@ use bevy::{
     hierarchy::{BuildChildren, DespawnRecursiveExt},
     input::ButtonInput,
     log::{info, warn},
-    prelude::{Changed, Commands, Component, Entity, Gizmos, KeyCode, Query, Res, With},
+    math::Isometry3d,
+    prelude::*,
     render::{
         mesh::{Indices, Mesh, PrimitiveTopology},
         render_asset::RenderAssetUsages,
     },
-    text::TextStyle,
+    text::TextFont,
     transform::components::Transform,
-    ui::{
-        node_bundles::{NodeBundle, TextBundle},
-        FlexDirection, Style, UiRect, Val,
-    },
-    utils::info,
+    ui::{FlexDirection, Node, UiRect, Val},
 };
-use glam::{bool, Quat, Vec2, Vec3};
+use glam::{bool, Vec2, Vec3};
 use itertools::Itertools;
 
 use crate::prelude::*;
@@ -158,7 +155,7 @@ fn debug_draw_smesh(
         } else {
             GREEN
         };
-        gizmos.sphere(v_pos, Quat::IDENTITY, 0.08, color);
+        gizmos.sphere(Isometry3d::from_translation(v_pos), 0.08, color);
         gizmos.arrow(v_pos, v_pos + v_id.normal(mesh)? * 0.2, color);
     }
     // Halfedges
@@ -202,7 +199,7 @@ fn debug_draw_smesh(
         } else {
             YELLOW
         };
-        gizmos.sphere(center, Quat::IDENTITY, 0.02, color);
+        gizmos.sphere(Isometry3d::from_translation(center), 0.02, color);
         gizmos.arrow(center, center + face_id.normal(mesh)? * 0.3, color);
     }
     Ok(())
@@ -340,31 +337,25 @@ fn update_ui_system(
         if let Ok(e) = q_ui.get_single() {
             commands.entity(e).despawn_recursive();
         }
-        let style = TextStyle {
-            font_size: 32.0,
-            ..Default::default()
-        };
+
         commands
             .spawn((
                 UiTag,
-                NodeBundle {
-                    style: Style {
-                        flex_direction: FlexDirection::Column,
-                        column_gap: Val::Px(5.0),
-                        padding: UiRect::all(Val::Px(5.0)),
-                        ..Default::default()
-                    },
-                    ..Default::default()
+                Node {
+                    flex_direction: FlexDirection::Column,
+                    column_gap: Val::Px(5.0),
+                    padding: UiRect::all(Val::Px(5.0)),
+                    ..default()
                 },
             ))
-            .with_children(|parent| {
-                parent.spawn(TextBundle::from_section(
-                    "H: hide/show debug gizmos",
-                    style.clone(),
+            .with_children(|builder| {
+                builder.spawn((
+                    Text::new("H: hide/show debug gizmos"),
+                    TextFont::from_font_size(32.0),
                 ));
                 if d.visible {
                     for s in &values {
-                        parent.spawn(TextBundle::from_section(*s, style.clone()));
+                        builder.spawn((Text::new(*s), TextFont::from_font_size(32.0)));
                     }
                 }
             });

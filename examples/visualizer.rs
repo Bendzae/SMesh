@@ -31,14 +31,13 @@ fn init_system(mut commands: Commands) {
             selection: Selection::Vertex(data.top_vertex),
             visible: true,
         },
-        TransformBundle::from_transform(Transform::from_xyz(0.0, 0.0, 0.0)),
+        Transform::from_xyz(0.0, 0.0, 0.0),
     ));
     // Camera
     commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 1.5, 17.0)),
-            ..default()
-        },
+        Camera3d::default(),
+        Msaa::Sample4,
+        Transform::from_translation(Vec3::new(0.0, 1.5, 17.0)),
         PanOrbitCamera::default(),
     ));
 }
@@ -50,7 +49,6 @@ fn main() {
             color: WHITE.into(),
             brightness: 0.3,
         })
-        .insert_resource(Msaa::Sample4)
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,

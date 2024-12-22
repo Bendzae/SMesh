@@ -1,12 +1,7 @@
 use core::f32;
 use std::f32::consts::PI;
 
-use bevy::{
-    color::palettes::css::ROSY_BROWN,
-    math::{cubic_splines::LinearSpline, VectorSpace},
-    prelude::*,
-    reflect::List,
-};
+use bevy::{math::cubic_splines::LinearSpline, prelude::*};
 use bevy_inspector_egui::{
     inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
 };
@@ -55,7 +50,7 @@ fn generate_tree(params: TreeParameters) -> SMeshResult<SMesh> {
             rng.f32_range(-0.5..0.5),
         ));
     }
-    let curve = LinearSpline::new(control_points).to_curve();
+    let curve = LinearSpline::new(control_points).to_curve().unwrap();
     let mut curve_iter = curve.iter_positions(number_of_curve_points);
 
     let (mut smesh, data) = Circle { segments: 8 }.generate()?;
@@ -98,7 +93,7 @@ fn generate_tree(params: TreeParameters) -> SMeshResult<SMesh> {
     crown
         .scale(
             select.clone(),
-            vec3(3.0, 1.0, 3.0) * params.height.max(2.0) * 0.4,
+            vec3(3.0, 1.0, 3.0) * params.height.max(2.0) * 0.3,
             Pivot::SelectionCog,
         )?
         .translate(select, top_pos)?;
@@ -117,7 +112,7 @@ fn update_tree_system(
             let smesh = generate_tree(params.clone()).unwrap();
             let v0 = smesh.vertices().next().unwrap();
             commands.entity(e).insert((
-                meshes.add(Mesh::from(smesh.clone())),
+                Mesh3d(meshes.add(Mesh::from(smesh.clone()))),
                 DebugRenderSMesh {
                     mesh: smesh,
                     selection: Selection::Vertex(v0),
@@ -135,66 +130,54 @@ fn init_system(
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
     commands.insert_resource(TreeParameters {
-        height: 3.0,
-        top_radius: 0.5,
-        bottom_radius: 0.8,
+        height: 4.0,
+        top_radius: 0.3,
+        bottom_radius: 1.0,
         resolution_y: 3,
         seed: 2,
     });
 
     commands.spawn((
         TreeTag,
-        PbrBundle {
-            material: materials.add(StandardMaterial {
-                perceptual_roughness: 1.0,
-                ..default()
-            }),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            perceptual_roughness: 1.0,
             ..default()
-        },
+        })),
     ));
 
     // Plane
-    commands.spawn(PbrBundle {
-        mesh: meshes.add(Plane3d::default()),
-        transform: Transform::from_scale(Vec3::splat(10.0)),
-        material: materials.add(StandardMaterial {
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default())),
+        MeshMaterial3d(materials.add(StandardMaterial {
             perceptual_roughness: 1.0,
             ..default()
-        }),
-        ..default()
-    });
+        })),
+        Transform::from_scale(Vec3::splat(10.0)),
+    ));
 
     // Light
-    commands.spawn(PointLightBundle {
-        point_light: PointLight {
+    commands.spawn((
+        PointLight {
             intensity: 300_000.0,
             ..default()
         },
-        transform: Transform::from_translation(vec3(-5.0, 3.0, 4.0)),
-        ..default()
-    });
+        Transform::from_translation(vec3(-5.0, 3.0, 4.0)),
+    ));
 
-    commands.spawn(DirectionalLightBundle {
-        directional_light: DirectionalLight {
+    commands.spawn((
+        DirectionalLight {
             illuminance: light_consts::lux::OVERCAST_DAY * 2.0,
             shadows_enabled: true,
             ..default()
         },
-        transform: Transform::from_rotation(Quat::from_euler(
-            EulerRot::ZYX,
-            0.0,
-            PI / 2.,
-            -PI / 4.,
-        )),
-        ..default()
-    });
+        Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, PI / 2., -PI / 4.)),
+    ));
 
     // Camera
     commands.spawn((
-        Camera3dBundle {
-            transform: Transform::from_translation(Vec3::new(0.0, 5.0, 10.0)),
-            ..default()
-        },
+        Camera3d::default(),
+        Msaa::Sample4,
+        Transform::from_translation(Vec3::new(0.0, 5.0, 10.0)),
         PanOrbitCamera::default(),
     ));
 }
@@ -206,7 +189,6 @@ fn main() {
             color: Color::WHITE,
             brightness: 300.0,
         })
-        .insert_resource(Msaa::Sample4)
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
