@@ -15,6 +15,7 @@ glam = "0.27.0"      # Tracking bevys glam version for convencience
 slotmap = "1.0.7"
 itertools = "0.13.0"
 thiserror = "1.0.63"
+sprs = "0.11.2"
 
 # Adapter dependencies
 bevy = { version = "0.14", default-features = false, features = [
