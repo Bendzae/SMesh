@@ -110,7 +110,7 @@ impl SMesh {
             bail!(DefaultError);
         }
 
-        let mut halfedeges: Vec<(HalfedgeId, bool)> = Vec::with_capacity(n);
+        let mut halfedges: Vec<(HalfedgeId, bool)> = Vec::with_capacity(n);
         let mut next_cache: Vec<(HalfedgeId, HalfedgeId)> = vec![];
         let mut needs_adjust: Vec<VertexId> = vec![];
 
@@ -125,19 +125,19 @@ impl SMesh {
                     if !he_id.is_boundary(self) {
                         bail!(TopologyError);
                     }
-                    halfedeges.push((he_id, false));
+                    halfedges.push((he_id, false));
                 }
                 Err(_) => {
                     // New halfedge
                     // TODO: Check if only one he should be added here?
                     let (he_id, _) = self.make_edge_internal(*v0, *v1);
-                    halfedeges.push((he_id, true));
+                    halfedges.push((he_id, true));
                 }
             }
         }
         // re-link patches if necessary
         for ((inner_prev_id, prev_new), (inner_next_id, next_new)) in
-            halfedeges.iter().circular_tuple_windows()
+            halfedges.iter().circular_tuple_windows()
         {
             if !prev_new && !next_new {
                 let inner_prev = *inner_prev_id;
@@ -179,14 +179,14 @@ impl SMesh {
 
         // create the face
         let face = Face {
-            halfedge: Some(halfedeges.get(n - 1).unwrap().0),
+            halfedge: Some(halfedges.get(n - 1).unwrap().0),
         };
         let face_id = self.faces_mut().insert(face);
 
         for (i, ii) in (0..n).circular_tuple_windows() {
             let v = vertices[ii];
-            let (inner_prev, prev_new) = halfedeges[i];
-            let (inner_next, next_new) = halfedeges[ii];
+            let (inner_prev, prev_new) = halfedges[i];
+            let (inner_next, next_new) = halfedges[ii];
 
             if prev_new || next_new {
                 let outer_prev = inner_next.opposite().run(self)?;
@@ -223,7 +223,7 @@ impl SMesh {
             }
 
             // set face id
-            self.he_mut(halfedeges[i].0).face = Some(face_id);
+            self.he_mut(halfedges[i].0).face = Some(face_id);
         }
 
         // process next halfedge cache
