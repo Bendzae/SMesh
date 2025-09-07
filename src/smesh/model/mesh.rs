@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use attribute::CustomAttributeMap;
-use bevy::log::info;
 use glam::{Vec2, Vec3};
 use itertools::Itertools;
 use slotmap::{SecondaryMap, SlotMap};

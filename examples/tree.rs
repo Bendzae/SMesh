@@ -3,6 +3,7 @@ use std::f32::consts::PI;
 
 use bevy::{math::cubic_splines::LinearSpline, prelude::*};
 use bevy_inspector_egui::{
+    bevy_egui::EguiPlugin,
     inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
@@ -188,14 +189,15 @@ fn main() {
         .insert_resource(AmbientLight {
             color: Color::WHITE,
             brightness: 300.0,
+            affects_lightmapped_meshes: true,
         })
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
             SMeshDebugDrawPlugin,
-            ResourceInspectorPlugin::<TreeParameters>::default(),
-            // WorldInspectorPlugin::default(),
         ))
+        .add_plugins(EguiPlugin::default())
+        .add_plugins(ResourceInspectorPlugin::<TreeParameters>::default())
         .add_systems(Startup, init_system)
         .add_systems(Update, update_tree_system)
         .register_type::<TreeParameters>()

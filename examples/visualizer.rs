@@ -48,12 +48,13 @@ fn main() {
         .insert_resource(AmbientLight {
             color: WHITE.into(),
             brightness: 0.3,
+            affects_lightmapped_meshes: true,
         })
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
             SMeshDebugDrawPlugin,
-            EguiPlugin,
+            EguiPlugin::default(),
         ))
         .add_systems(Startup, init_system)
         .run();

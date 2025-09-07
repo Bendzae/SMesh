@@ -1,6 +1,6 @@
 [package]
 name = "smesh"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 authors = ["Ben Dzaebel <ben@bendz.dev>"]
 homepage = "bendz.dev"
@@ -17,16 +17,17 @@ itertools = "0.13.0"
 thiserror = "2.0.9"
 
 # Adapter dependencies
-bevy = { version = "0.15", default-features = false, features = [
+bevy = { version = "0.16", default-features = false, features = [
   "bevy_pbr",
   "bevy_ui",
   "bevy_gizmos",
+  "bevy_log",
 ], optional = true }
 
 [dev-dependencies]
-bevy = "0.15"
-bevy_panorbit_camera = { version = "0.21.1", features = ["bevy_egui"] }
-bevy-inspector-egui = "0.28"
+bevy = "0.16"
+bevy_panorbit_camera = { version = "0.28", features = ["bevy_egui"] }
+bevy-inspector-egui = "0.33.1"
 fastrand = "2.3.0"
 fastrand-contrib = "0.1.0"
 

@@ -5,7 +5,6 @@ use bevy::{
         palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW},
         Srgba,
     },
-    hierarchy::{BuildChildren, DespawnRecursiveExt},
     input::ButtonInput,
     log::{info, warn},
     math::Isometry3d,
@@ -334,8 +333,8 @@ fn update_ui_system(
                 vec![]
             }
         };
-        if let Ok(e) = q_ui.get_single() {
-            commands.entity(e).despawn_recursive();
+        if let Ok(e) = q_ui.single() {
+            commands.entity(e).despawn();
         }
 
         commands
