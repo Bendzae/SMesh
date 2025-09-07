@@ -228,21 +228,26 @@ impl SMesh {
         // Returned selection
         let mut selection = MeshSelection::new();
         for he in halfedges {
-            let he_opposite = he.opposite().run(self)?;
             if he_cache.contains(&he) {
                 continue;
             }
+
+            let he_opposite = he.opposite().run(self)?;
+
             let p0 = he.src_vert().position(self)?;
             let p1 = he.dst_vert().position(self)?;
             let v = self.add_vertex(0.5 * (p0 + p1));
             let new_he = self.insert_vertex(he, v)?;
+
             he_cache.insert(he);
             he_cache.insert(he_opposite);
+
             selection.insert(he);
             selection.insert(he_opposite);
             selection.insert(new_he);
             selection.insert(new_he.opposite().run(self)?);
         }
+
         for f in faces {
             let valence = f.valence(self) / 2;
             let corner = face_corners[&f];
@@ -251,6 +256,7 @@ impl SMesh {
                 .find(|he| he.src_vert().run(self).unwrap() == corner)
                 .unwrap();
             let he_loop = self.halfedge_loop(corner_edge.next().run(self)?);
+
             if valence == 3 {
                 self.delete_only_face(f)?;
                 for (h0, h1) in he_loop.iter().circular_tuple_windows().step_by(2) {
@@ -269,6 +275,7 @@ impl SMesh {
                 )?;
                 selection.insert(f);
             }
+
             if valence == 4 {
                 let center = self.get_face_centroid(f)?;
                 let v_c = self.add_vertex(center);
@@ -283,6 +290,7 @@ impl SMesh {
                     selection.insert(f);
                 }
             }
+
             // valence > 4: ngons simply stay as ngons (same behaviour as blender)
         }
 
@@ -374,7 +382,7 @@ impl SMesh {
                 self.uvs.as_mut().unwrap().insert(v_map[&id], value);
             }
         }
-        // TODO: copy custom attributes 
+        // TODO: copy custom attributes
         // for attr in self.vertex_attributes {
         //
         // }
