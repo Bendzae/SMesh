@@ -453,23 +453,44 @@ impl SMesh {
     /// cube.spherical_project_uvs(Vec3::ZERO).unwrap();
     /// ```
     pub fn spherical_project_uvs(&mut self, center: Vec3) -> SMeshResult<()> {
-        let uv_data: Vec<_> = self.halfedges()
-            .filter_map(|he_id| {
-                let v_id = he_id.dst_vert().run(self).ok()?;
-                let pos = *self.positions.get(v_id)?;
+        let mut all_face_uvs = Vec::new();
+
+        for face_id in self.faces() {
+            let face_halfedges: Vec<_> = face_id.halfedges(self).collect();
+            
+            let mut face_uvs = Vec::new();
+            
+            for &he_id in &face_halfedges {
+                let v_id = he_id.dst_vert().run(self)?;
+                let pos = *self.positions.get(v_id).ok_or(SMeshError::TopologyError)?;
                 let dir = (pos - center).normalize();
 
                 let u = 0.5 + dir.z.atan2(dir.x) / (2.0 * std::f32::consts::PI);
                 let v = 0.5 + dir.y.asin() / std::f32::consts::PI;
 
-                Some((he_id, vec2(u, v)))
-            })
-            .collect();
+                face_uvs.push((he_id, u, v));
+            }
+
+            let avg_u: f32 = face_uvs.iter().map(|(_, u, _)| u).sum::<f32>() / face_uvs.len() as f32;
+            
+            for (he_id, mut u, v) in face_uvs {
+                if (u - avg_u).abs() > 0.5 {
+                    if u < 0.5 {
+                        u += 1.0;
+                    } else {
+                        u -= 1.0;
+                    }
+                }
+                
+                u = u.clamp(0.0, 1.0);
+                all_face_uvs.push((he_id, vec2(u, v)));
+            }
+        }
 
         self.vertex_uvs = None;
         self.halfedge_uvs = Some(SecondaryMap::new());
         if let Some(ref mut he_uvs) = self.halfedge_uvs {
-            for (he_id, uv) in uv_data {
+            for (he_id, uv) in all_face_uvs {
                 he_uvs.insert(he_id, uv);
             }
         }
