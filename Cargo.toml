@@ -15,6 +15,7 @@ glam = "0.29"        # Tracking bevys glam version for convencience
 slotmap = "1.0.7"
 itertools = "0.13.0"
 thiserror = "2.0.9"
+xatlas-rs = { git = "https://github.com/PaulWagener/xatlas-rs", optional = true }
 
 # Adapter dependencies
 bevy = { version = "0.16", default-features = false, features = [
@@ -35,3 +36,4 @@ fastrand-contrib = "0.1.0"
 [features]
 default = ["bevy_adapter"]
 bevy_adapter = ["dep:bevy"]
+xatlas = ["dep:xatlas-rs"]

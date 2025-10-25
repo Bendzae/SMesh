@@ -83,6 +83,33 @@ Coming soon...
 
 Please check the examples for more :)
 
+#### UV Unwrapping
+
+SMesh supports automatic UV unwrapping via the xatlas library. Enable the `xatlas` feature:
+
+```toml
+[dependencies]
+smesh = { version = "0.2", features = ["xatlas"] }
+```
+
+Then generate UVs for your mesh:
+
+```rust
+mesh.generate_uv_atlas()?;
+```
+
+Or with custom options:
+
+```rust
+use smesh::smesh::xatlas_integration::{XatlasOptions, ChartOptions, PackOptions};
+
+let options = XatlasOptions {
+    chart: ChartOptions::default(),
+    pack: PackOptions::default(),
+};
+mesh.generate_uv_atlas_with_options(options)?;
+```
+
 ### Goals
 
 I aim to provide a flexible rust implementation of the Surface Mesh with a focus

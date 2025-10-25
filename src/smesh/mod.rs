@@ -22,3 +22,6 @@ pub mod topological_operations;
 pub mod transform;
 pub mod util;
 pub mod uv_operations;
+
+#[cfg(feature = "xatlas")]
+pub mod xatlas_integration;
