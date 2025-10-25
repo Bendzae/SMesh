@@ -31,6 +31,16 @@ _mesh extrusion and manipulation example with the visual debug tools enabled_
 
 `cargo run --example extrude`
 
+**UV Unwrapping Example**
+
+Interactive example demonstrating all UV unwrapping methods on three different primitives (Cube, Sphere, Cylinder) with a checkerboard texture:
+
+```bash
+cargo run --example uv_unwrap --features xatlas
+```
+
+Press **SPACE** to cycle through UV methods: Planar Z, Planar Y, Cylindrical Y, Spherical, and XAtlas Auto. All three primitives update simultaneously to show how each method performs on different geometry.
+
 ### Usage
 
 _Preface_: Mesh elements in SMesh are identified by a unique typesafe id, which can be of type:
@@ -85,7 +95,24 @@ Please check the examples for more :)
 
 #### UV Unwrapping
 
-SMesh supports automatic UV unwrapping via the xatlas library. Enable the `xatlas` feature:
+SMesh supports both simple projection-based UV mapping and automatic UV unwrapping via xatlas.
+
+**Simple Projection Methods** (built-in, no features required):
+
+```rust
+use smesh::smesh::uv_operations::ProjectionAxis;
+
+// Planar projection
+mesh.planar_project_uvs(ProjectionAxis::Z)?;
+
+// Cylindrical projection
+mesh.cylindrical_project_uvs(ProjectionAxis::Y)?;
+
+// Spherical projection
+mesh.spherical_project_uvs(Vec3::ZERO)?;
+```
+
+**Automatic UV Unwrapping** via xatlas (requires `xatlas` feature):
 
 ```toml
 [dependencies]
@@ -95,19 +122,14 @@ smesh = { version = "0.2", features = ["xatlas"] }
 Then generate UVs for your mesh:
 
 ```rust
-mesh.generate_uv_atlas()?;
-```
+// Simple automatic unwrapping
+mesh.auto_uv_unwrap()?;
 
-Or with custom options:
+// With custom options
+use smesh::smesh::xatlas_integration::XatlasOptions;
 
-```rust
-use smesh::smesh::xatlas_integration::{XatlasOptions, ChartOptions, PackOptions};
-
-let options = XatlasOptions {
-    chart: ChartOptions::default(),
-    pack: PackOptions::default(),
-};
-mesh.generate_uv_atlas_with_options(options)?;
+let options = XatlasOptions::default();
+mesh.auto_uv_unwrap_with_options(options)?;
 ```
 
 ### Goals

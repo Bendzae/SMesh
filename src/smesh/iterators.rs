@@ -196,9 +196,9 @@ impl FaceIterators for FaceId {
 }
 
 mod test {
-    use super::*;
-    use glam::vec3;
-    use itertools::Itertools;
+    
+    
+    
 
     #[test]
     fn vertex_around_vertex() {

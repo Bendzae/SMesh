@@ -214,7 +214,7 @@ fn debug_draw_smesh(
             .vertices(mesh)
             .map(|v| *mesh.positions.get(v).unwrap());
         let count = vertex_positions.clone().count() as f32;
-        let relative_center = vertex_positions.fold(Vec3::ZERO, |acc, pos| (acc + pos)) / count;
+        let relative_center = vertex_positions.fold(Vec3::ZERO, |acc, pos| acc + pos) / count;
         let center = t.transform_point(relative_center);
         let color = if debug_smesh.selection == Selection::Face(face_id) {
             ORANGE_RED

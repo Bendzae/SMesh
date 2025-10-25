@@ -3,7 +3,6 @@ use slotmap::SecondaryMap;
 use xatlas_rs::{ChartOptions, MeshData, MeshDecl, PackOptions, Xatlas};
 
 use crate::prelude::*;
-use crate::smesh::mesh_query::*;
 
 pub struct XatlasOptions {
     pub chart: ChartOptions,
@@ -20,11 +19,19 @@ impl Default for XatlasOptions {
 }
 
 impl SMesh {
-    pub fn generate_uv_atlas(&mut self) -> SMeshResult<()> {
-        self.generate_uv_atlas_with_options(XatlasOptions::default())
+    /// Generate UV atlas using automatic unwrapping via xatlas.
+    ///
+    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
+    /// new halfedge UVs using automatic chart-based unwrapping.
+    pub fn auto_uv_unwrap(&mut self) -> SMeshResult<()> {
+        self.auto_uv_unwrap_with_options(XatlasOptions::default())
     }
 
-    pub fn generate_uv_atlas_with_options(&mut self, options: XatlasOptions) -> SMeshResult<()> {
+    /// Generate UV atlas with custom options using automatic unwrapping via xatlas.
+    ///
+    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
+    /// new halfedge UVs using automatic chart-based unwrapping with the specified options.
+    pub fn auto_uv_unwrap_with_options(&mut self, options: XatlasOptions) -> SMeshResult<()> {
         let mut positions = Vec::new();
         let mut indices = Vec::new();
         let mut vertex_map = Vec::new();
@@ -93,6 +100,7 @@ impl SMesh {
         let atlas_width = atlas_width as f32;
         let atlas_height = atlas_height as f32;
 
+        self.vertex_uvs = None;
         self.halfedge_uvs = Some(SecondaryMap::new());
 
         if let Some(ref mut he_uvs) = self.halfedge_uvs {
@@ -119,6 +127,23 @@ mod tests {
     use glam::U16Vec3;
 
     #[test]
+    fn test_xatlas_clears_vertex_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        cube.vertex_uvs = Some(Default::default());
+        assert!(cube.vertex_uvs.is_some());
+
+        cube.auto_uv_unwrap().unwrap();
+
+        assert!(cube.vertex_uvs.is_none(), "vertex_uvs should be cleared");
+        assert!(cube.halfedge_uvs.is_some(), "halfedge_uvs should be set");
+    }
+
+    #[test]
     fn test_generate_uv_atlas() {
         let (mut cube, _) = Cube {
             subdivision: U16Vec3::new(1, 1, 1),
@@ -126,7 +151,7 @@ mod tests {
         .generate()
         .unwrap();
 
-        cube.generate_uv_atlas().unwrap();
+        cube.auto_uv_unwrap().unwrap();
 
         assert!(cube.halfedge_uvs.is_some());
 

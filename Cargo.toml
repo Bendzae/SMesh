@@ -37,3 +37,7 @@ fastrand-contrib = "0.1.0"
 default = ["bevy_adapter"]
 bevy_adapter = ["dep:bevy"]
 xatlas = ["dep:xatlas-rs"]
+
+[[example]]
+name = "uv_unwrap"
+required-features = ["xatlas"]

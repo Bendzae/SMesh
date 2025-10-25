@@ -1,4 +1,5 @@
-use glam::vec2;
+use glam::{vec2, Vec3};
+use slotmap::SecondaryMap;
 
 use crate::prelude::*;
 
@@ -16,13 +17,13 @@ impl SMesh {
     ///
     /// # Example
     /// ```
-    /// use glam::{vec2, U16Vec3};
+    /// use glam::U16Vec3;
     /// use smesh::prelude::*;
     /// use smesh::smesh::primitives::{Cube, Primitive};
     ///
     /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
     /// let selection = cube.faces().collect::<Vec<_>>();
-    /// cube.scale_uvs(selection, 2.0, vec2(0.5, 0.5)).unwrap();
+    /// cube.scale_uvs(selection, 2.0).unwrap();
     /// ```
     pub fn scale_uvs<T: Into<MeshSelection>>(
         &mut self,
@@ -171,8 +172,203 @@ impl SMesh {
              }
          }
 
-         Ok(())
-     }
+        Ok(())
+    }
+
+    /// Project UVs using planar projection along a specified axis.
+    ///
+    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
+    /// new halfedge UVs based on planar projection.
+    ///
+    /// # Arguments
+    /// * `axis` - The axis to project along (X, Y, or Z)
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err` if there's a topology error
+    ///
+    /// # Example
+    /// ```
+    /// use glam::U16Vec3;
+    /// use smesh::prelude::*;
+    /// use smesh::smesh::primitives::{Cube, Primitive};
+    ///
+    /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
+    /// cube.planar_project_uvs(ProjectionAxis::Z).unwrap();
+    /// ```
+    pub fn planar_project_uvs(&mut self, axis: ProjectionAxis) -> SMeshResult<()> {
+        let (mut min, mut max) = (Vec3::splat(f32::MAX), Vec3::splat(f32::MIN));
+        
+        for v_id in self.vertices() {
+            if let Some(&pos) = self.positions.get(v_id) {
+                min = min.min(pos);
+                max = max.max(pos);
+            }
+        }
+
+        let range = max - min;
+
+        let uv_data: Vec<_> = self.halfedges()
+            .filter_map(|he_id| {
+                let v_id = he_id.dst_vert().run(self).ok()?;
+                let pos = *self.positions.get(v_id)?;
+                
+                let uv = match axis {
+                    ProjectionAxis::X => {
+                        let u = if range.y != 0.0 { (pos.y - min.y) / range.y } else { 0.5 };
+                        let v = if range.z != 0.0 { (pos.z - min.z) / range.z } else { 0.5 };
+                        vec2(u, v)
+                    }
+                    ProjectionAxis::Y => {
+                        let u = if range.x != 0.0 { (pos.x - min.x) / range.x } else { 0.5 };
+                        let v = if range.z != 0.0 { (pos.z - min.z) / range.z } else { 0.5 };
+                        vec2(u, v)
+                    }
+                    ProjectionAxis::Z => {
+                        let u = if range.x != 0.0 { (pos.x - min.x) / range.x } else { 0.5 };
+                        let v = if range.y != 0.0 { (pos.y - min.y) / range.y } else { 0.5 };
+                        vec2(u, v)
+                    }
+                };
+                Some((he_id, uv))
+            })
+            .collect();
+
+        self.vertex_uvs = None;
+        self.halfedge_uvs = Some(SecondaryMap::new());
+        if let Some(ref mut he_uvs) = self.halfedge_uvs {
+            for (he_id, uv) in uv_data {
+                he_uvs.insert(he_id, uv);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Project UVs using cylindrical projection around a specified axis.
+    ///
+    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
+    /// new halfedge UVs based on cylindrical projection.
+    ///
+    /// # Arguments
+    /// * `axis` - The axis to project around (X, Y, or Z)
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err` if there's a topology error
+    ///
+    /// # Example
+    /// ```
+    /// use glam::U16Vec3;
+    /// use smesh::prelude::*;
+    /// use smesh::smesh::primitives::{Cube, Primitive};
+    ///
+    /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
+    /// cube.cylindrical_project_uvs(ProjectionAxis::Y).unwrap();
+    /// ```
+    pub fn cylindrical_project_uvs(&mut self, axis: ProjectionAxis) -> SMeshResult<()> {
+        let (mut min_height, mut max_height) = (f32::MAX, f32::MIN);
+        
+        for v_id in self.vertices() {
+            if let Some(&pos) = self.positions.get(v_id) {
+                let height = match axis {
+                    ProjectionAxis::X => pos.x,
+                    ProjectionAxis::Y => pos.y,
+                    ProjectionAxis::Z => pos.z,
+                };
+                min_height = min_height.min(height);
+                max_height = max_height.max(height);
+            }
+        }
+
+        let height_range = max_height - min_height;
+
+        let uv_data: Vec<_> = self.halfedges()
+            .filter_map(|he_id| {
+                let v_id = he_id.dst_vert().run(self).ok()?;
+                let pos = *self.positions.get(v_id)?;
+                
+                let (x, z, height) = match axis {
+                    ProjectionAxis::X => (pos.y, pos.z, pos.x),
+                    ProjectionAxis::Y => (pos.x, pos.z, pos.y),
+                    ProjectionAxis::Z => (pos.x, pos.y, pos.z),
+                };
+
+                let angle = z.atan2(x);
+                let u = (angle + std::f32::consts::PI) / (2.0 * std::f32::consts::PI);
+                let v = if height_range != 0.0 {
+                    (height - min_height) / height_range
+                } else {
+                    0.5
+                };
+
+                Some((he_id, vec2(u, v)))
+            })
+            .collect();
+
+        self.vertex_uvs = None;
+        self.halfedge_uvs = Some(SecondaryMap::new());
+        if let Some(ref mut he_uvs) = self.halfedge_uvs {
+            for (he_id, uv) in uv_data {
+                he_uvs.insert(he_id, uv);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Project UVs using spherical projection from a center point.
+    ///
+    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
+    /// new halfedge UVs based on spherical projection.
+    ///
+    /// # Arguments
+    /// * `center` - The center point for spherical projection
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err` if there's a topology error
+    ///
+    /// # Example
+    /// ```
+    /// use glam::{U16Vec3, Vec3};
+    /// use smesh::prelude::*;
+    /// use smesh::smesh::primitives::{Cube, Primitive};
+    ///
+    /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
+    /// cube.spherical_project_uvs(Vec3::ZERO).unwrap();
+    /// ```
+    pub fn spherical_project_uvs(&mut self, center: Vec3) -> SMeshResult<()> {
+        let uv_data: Vec<_> = self.halfedges()
+            .filter_map(|he_id| {
+                let v_id = he_id.dst_vert().run(self).ok()?;
+                let pos = *self.positions.get(v_id)?;
+                let dir = (pos - center).normalize();
+
+                let u = 0.5 + dir.z.atan2(dir.x) / (2.0 * std::f32::consts::PI);
+                let v = 0.5 + dir.y.asin() / std::f32::consts::PI;
+
+                Some((he_id, vec2(u, v)))
+            })
+            .collect();
+
+        self.vertex_uvs = None;
+        self.halfedge_uvs = Some(SecondaryMap::new());
+        if let Some(ref mut he_uvs) = self.halfedge_uvs {
+            for (he_id, uv) in uv_data {
+                he_uvs.insert(he_id, uv);
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ProjectionAxis {
+    X,
+    Y,
+    Z,
 }
 
 #[cfg(test)]
@@ -294,6 +490,125 @@ mod tests {
                         "UV should be translated correctly. Expected {:?}, got {:?}",
                         expected,
                         new_uv
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_uv_override_clears_vertex_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        cube.vertex_uvs = Some(Default::default());
+        assert!(cube.vertex_uvs.is_some());
+
+        cube.planar_project_uvs(crate::smesh::uv_operations::ProjectionAxis::Z)
+            .unwrap();
+
+        assert!(cube.vertex_uvs.is_none(), "vertex_uvs should be cleared");
+        assert!(cube.halfedge_uvs.is_some(), "halfedge_uvs should be set");
+    }
+
+    #[test]
+    fn test_planar_project_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        cube.planar_project_uvs(crate::smesh::uv_operations::ProjectionAxis::Z)
+            .unwrap();
+
+        assert!(cube.halfedge_uvs.is_some());
+
+        if let Some(ref uvs) = cube.halfedge_uvs {
+            let uv_count = cube.halfedges().filter(|he| uvs.contains_key(*he)).count();
+            assert!(uv_count > 0, "Should have generated UVs for halfedges");
+
+            for he in cube.halfedges() {
+                if let Some(uv) = uvs.get(he) {
+                    assert!(
+                        uv.x >= 0.0 && uv.x <= 1.0,
+                        "UV x should be in [0,1], got {}",
+                        uv.x
+                    );
+                    assert!(
+                        uv.y >= 0.0 && uv.y <= 1.0,
+                        "UV y should be in [0,1], got {}",
+                        uv.y
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cylindrical_project_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        cube.cylindrical_project_uvs(crate::smesh::uv_operations::ProjectionAxis::Y)
+            .unwrap();
+
+        assert!(cube.halfedge_uvs.is_some());
+
+        if let Some(ref uvs) = cube.halfedge_uvs {
+            let uv_count = cube.halfedges().filter(|he| uvs.contains_key(*he)).count();
+            assert!(uv_count > 0, "Should have generated UVs for halfedges");
+
+            for he in cube.halfedges() {
+                if let Some(uv) = uvs.get(he) {
+                    assert!(
+                        uv.x >= 0.0 && uv.x <= 1.0,
+                        "UV x should be in [0,1], got {}",
+                        uv.x
+                    );
+                    assert!(
+                        uv.y >= 0.0 && uv.y <= 1.0,
+                        "UV y should be in [0,1], got {}",
+                        uv.y
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_spherical_project_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        cube.spherical_project_uvs(glam::Vec3::ZERO).unwrap();
+
+        assert!(cube.halfedge_uvs.is_some());
+
+        if let Some(ref uvs) = cube.halfedge_uvs {
+            let uv_count = cube.halfedges().filter(|he| uvs.contains_key(*he)).count();
+            assert!(uv_count > 0, "Should have generated UVs for halfedges");
+
+            for he in cube.halfedges() {
+                if let Some(uv) = uvs.get(he) {
+                    assert!(
+                        uv.x >= 0.0 && uv.x <= 1.0,
+                        "UV x should be in [0,1], got {}",
+                        uv.x
+                    );
+                    assert!(
+                        uv.y >= 0.0 && uv.y <= 1.0,
+                        "UV y should be in [0,1], got {}",
+                        uv.y
                     );
                 }
             }

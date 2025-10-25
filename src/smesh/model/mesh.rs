@@ -351,7 +351,7 @@ impl MeshMutator<'_, FaceId> {
         Ok(())
     }
 
-    pub fn delete(mut self) -> SMeshResult<()> {
+    pub fn delete(self) -> SMeshResult<()> {
         self.conn.faces.remove(self.value);
         Ok(())
     }
