@@ -366,12 +366,12 @@ impl SMesh {
                     .insert(f_map[&id], value);
             }
         }
-        if let Some(uvs) = other.uvs {
+        if let Some(uvs) = other.vertex_uvs {
             for (id, value) in uvs {
-                if self.uvs.is_none() {
-                    self.uvs = Some(SecondaryMap::new());
+                if self.vertex_uvs.is_none() {
+                    self.vertex_uvs = Some(SecondaryMap::new());
                 }
-                self.uvs.as_mut().unwrap().insert(v_map[&id], value);
+                self.vertex_uvs.as_mut().unwrap().insert(v_map[&id], value);
             }
         }
         // TODO: copy custom attributes 
