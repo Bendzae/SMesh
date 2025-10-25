@@ -61,6 +61,118 @@ impl SMesh {
 
         Ok(())
     }
+
+    /// Translate UVs on a selection by a given offset vector.
+    ///
+    /// # Arguments
+    /// * `selection` - The selection to translate UVs for (vertices, halfedges, or faces)
+    /// * `offset` - The translation offset vector
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err` if there's a topology error
+    ///
+    /// # Example
+    /// ```
+    /// use glam::{vec2, U16Vec3};
+    /// use smesh::prelude::*;
+    /// use smesh::smesh::primitives::{Cube, Primitive};
+    ///
+    /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
+    /// let selection = cube.faces().collect::<Vec<_>>();
+    /// cube.translate_uvs(selection, vec2(0.1, 0.2)).unwrap();
+    /// ```
+     pub fn translate_uvs<T: Into<MeshSelection>>(
+         &mut self,
+         selection: T,
+         offset: glam::Vec2,
+     ) -> SMeshResult<()> {
+         let s: MeshSelection = selection.into();
+
+         let halfedges = s.resolve_to_halfedges(self)?;
+         let vertices = s.resolve_to_vertices(self)?;
+
+         if let Some(ref mut he_uvs) = self.halfedge_uvs {
+             for he_id in halfedges {
+                 if let Some(uv) = he_uvs.get_mut(he_id) {
+                     *uv += offset;
+                 }
+             }
+         }
+
+         if let Some(ref mut v_uvs) = self.vertex_uvs {
+             for v_id in vertices {
+                 if let Some(uv) = v_uvs.get_mut(v_id) {
+                     *uv += offset;
+                 }
+             }
+         }
+
+         Ok(())
+     }
+
+     /// Rotate UVs on a selection by a given angle around a center point.
+     ///
+     /// # Arguments
+     /// * `selection` - The selection to rotate UVs for (vertices, halfedges, or faces)
+     /// * `angle` - The rotation angle in radians
+     ///
+     /// # Returns
+     /// * `Ok(())` if successful
+     /// * `Err` if there's a topology error
+     ///
+     /// # Example
+     /// ```
+     /// use glam::{vec2, U16Vec3};
+     /// use smesh::prelude::*;
+     /// use smesh::smesh::primitives::{Cube, Primitive};
+     ///
+     /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
+     /// let selection = cube.faces().collect::<Vec<_>>();
+     /// cube.rotate_uvs(selection, std::f32::consts::PI / 4.0).unwrap();
+     /// ```
+     pub fn rotate_uvs<T: Into<MeshSelection>>(
+         &mut self,
+         selection: T,
+         angle: f32,
+     ) -> SMeshResult<()> {
+         let center = vec2(0.5, 0.5);
+         let cos_a = angle.cos();
+         let sin_a = angle.sin();
+
+         let s: MeshSelection = selection.into();
+
+         let halfedges = s.resolve_to_halfedges(self)?;
+         let vertices = s.resolve_to_vertices(self)?;
+
+         if let Some(ref mut he_uvs) = self.halfedge_uvs {
+             for he_id in halfedges {
+                 if let Some(uv) = he_uvs.get_mut(he_id) {
+                     let offset = *uv - center;
+                     let rotated = vec2(
+                         offset.x * cos_a - offset.y * sin_a,
+                         offset.x * sin_a + offset.y * cos_a,
+                     );
+                     *uv = center + rotated;
+                 }
+             }
+         }
+
+         if let Some(ref mut v_uvs) = self.vertex_uvs {
+             for v_id in vertices {
+                 if let Some(uv) = v_uvs.get_mut(v_id) {
+                     let offset = *uv - center;
+                     let rotated = vec2(
+                         offset.x * cos_a - offset.y * sin_a,
+                         offset.x * sin_a + offset.y * cos_a,
+                     );
+                     *uv = center + rotated;
+                 }
+             }
+         }
+
+         Ok(())
+     }
 }
 
 #[cfg(test)]
@@ -141,6 +253,92 @@ mod tests {
                     assert!(
                         (new_uv - expected).length() < 0.001,
                         "UV should be scaled correctly. Expected {:?}, got {:?}",
+                        expected,
+                        new_uv
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_translate_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        let original_uvs: Vec<_> = cube
+            .halfedges()
+            .filter_map(|he| {
+                cube.halfedge_uvs
+                    .as_ref()
+                    .and_then(|uvs| uvs.get(he).copied())
+                    .map(|uv| (he, uv))
+            })
+            .collect();
+
+        let faces = cube.faces().collect::<Vec<_>>();
+        let offset = vec2(0.1, 0.2);
+
+        cube.translate_uvs(faces, offset).unwrap();
+
+        if let Some(ref uvs) = cube.halfedge_uvs {
+            for (he_id, original_uv) in original_uvs {
+                if let Some(&new_uv) = uvs.get(he_id) as Option<&Vec2> {
+                    let expected = original_uv + offset;
+
+                    assert!(
+                        (new_uv - expected).length() < 0.001,
+                        "UV should be translated correctly. Expected {:?}, got {:?}",
+                        expected,
+                        new_uv
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_rotate_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        let original_uvs: Vec<_> = cube
+            .halfedges()
+            .filter_map(|he| {
+                cube.halfedge_uvs
+                    .as_ref()
+                    .and_then(|uvs| uvs.get(he).copied())
+                    .map(|uv| (he, uv))
+            })
+            .collect();
+
+        let faces = cube.faces().collect::<Vec<_>>();
+        let angle = std::f32::consts::PI / 2.0;
+
+        cube.rotate_uvs(faces, angle).unwrap();
+
+        if let Some(ref uvs) = cube.halfedge_uvs {
+            for (he_id, original_uv) in original_uvs {
+                if let Some(&new_uv) = uvs.get(he_id) as Option<&Vec2> {
+                    let center = vec2(0.5, 0.5);
+                    let offset = original_uv - center;
+                    let cos_a = angle.cos();
+                    let sin_a = angle.sin();
+                    let rotated = vec2(
+                        offset.x * cos_a - offset.y * sin_a,
+                        offset.x * sin_a + offset.y * cos_a,
+                    );
+                    let expected = center + rotated;
+
+                    assert!(
+                        (new_uv - expected).length() < 0.001,
+                        "UV should be rotated correctly. Expected {:?}, got {:?}",
                         expected,
                         new_uv
                     );
