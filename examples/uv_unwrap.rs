@@ -22,6 +22,7 @@ enum UVMethod {
     PlanarY,
     CylindricalY,
     Spherical,
+    Cube,
     Xatlas,
 }
 
@@ -172,6 +173,7 @@ fn setup(
         ("Planar Y", UVMethod::PlanarY),
         ("Cylindrical Y", UVMethod::CylindricalY),
         ("Spherical", UVMethod::Spherical),
+        ("Cube", UVMethod::Cube),
         ("XAtlas Auto", UVMethod::Xatlas),
     ];
 
@@ -239,6 +241,9 @@ fn update_uv_method(
                     smesh
                         .spherical_project_uvs(glam::Vec3::ZERO)
                         .unwrap();
+                }
+                UVMethod::Cube => {
+                    smesh.cube_project_uvs(glam::Vec3::ZERO).unwrap();
                 }
                 UVMethod::Xatlas => {
                     smesh.auto_uv_unwrap().unwrap();

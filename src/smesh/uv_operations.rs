@@ -338,6 +338,99 @@ impl SMesh {
         Ok(())
     }
 
+    /// Project UVs using cube projection from a center point.
+    ///
+    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
+    /// new halfedge UVs based on cube projection. Each face is projected onto one of six
+    /// cube faces based on the dominant normal direction.
+    ///
+    /// # Arguments
+    /// * `center` - The center point for cube projection
+    ///
+    /// # Returns
+    /// * `Ok(())` if successful
+    /// * `Err` if there's a topology error
+    ///
+    /// # Example
+    /// ```
+    /// use glam::{U16Vec3, Vec3};
+    /// use smesh::prelude::*;
+    /// use smesh::smesh::primitives::{Cube, Primitive};
+    ///
+    /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
+    /// cube.cube_project_uvs(Vec3::ZERO).unwrap();
+    /// ```
+    pub fn cube_project_uvs(&mut self, center: Vec3) -> SMeshResult<()> {
+        let mut min_bounds = Vec3::splat(f32::MAX);
+        let mut max_bounds = Vec3::splat(f32::MIN);
+        
+        for v_id in self.vertices() {
+            if let Some(&pos) = self.positions.get(v_id) {
+                min_bounds = min_bounds.min(pos);
+                max_bounds = max_bounds.max(pos);
+            }
+        }
+        
+        let size = (max_bounds - min_bounds).max_element();
+        
+        let mut all_face_uvs = Vec::new();
+
+        for face_id in self.faces() {
+            let face_halfedges: Vec<_> = face_id.halfedges(self).collect();
+            
+            let mut face_positions = Vec::new();
+            for &he_id in &face_halfedges {
+                let v_id = he_id.dst_vert().run(self)?;
+                let pos = *self.positions.get(v_id).ok_or(SMeshError::TopologyError)?;
+                face_positions.push(pos);
+            }
+
+            let face_center = face_positions.iter().fold(Vec3::ZERO, |acc, &p| acc + p) 
+                / face_positions.len() as f32;
+            let face_dir = (face_center - center).normalize();
+
+            let abs_x = face_dir.x.abs();
+            let abs_y = face_dir.y.abs();
+            let abs_z = face_dir.z.abs();
+
+            for (&he_id, &pos) in face_halfedges.iter().zip(face_positions.iter()) {
+                let rel_pos = pos - center;
+
+                let (u, v) = if abs_x >= abs_y && abs_x >= abs_z {
+                    if face_dir.x > 0.0 {
+                        ((rel_pos.z / size + 1.0) / 2.0, (rel_pos.y / size + 1.0) / 2.0)
+                    } else {
+                        ((-rel_pos.z / size + 1.0) / 2.0, (rel_pos.y / size + 1.0) / 2.0)
+                    }
+                } else if abs_y >= abs_x && abs_y >= abs_z {
+                    if face_dir.y > 0.0 {
+                        ((rel_pos.x / size + 1.0) / 2.0, (rel_pos.z / size + 1.0) / 2.0)
+                    } else {
+                        ((rel_pos.x / size + 1.0) / 2.0, (-rel_pos.z / size + 1.0) / 2.0)
+                    }
+                } else {
+                    if face_dir.z > 0.0 {
+                        ((-rel_pos.x / size + 1.0) / 2.0, (rel_pos.y / size + 1.0) / 2.0)
+                    } else {
+                        ((rel_pos.x / size + 1.0) / 2.0, (rel_pos.y / size + 1.0) / 2.0)
+                    }
+                };
+
+                all_face_uvs.push((he_id, vec2(u, v)));
+            }
+        }
+
+        self.vertex_uvs = None;
+        self.halfedge_uvs = Some(SecondaryMap::new());
+        if let Some(ref mut he_uvs) = self.halfedge_uvs {
+            for (he_id, uv) in all_face_uvs {
+                he_uvs.insert(he_id, uv);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Project UVs using spherical projection from a center point.
     ///
     /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
@@ -677,6 +770,39 @@ mod tests {
                         "UV should be rotated correctly. Expected {:?}, got {:?}",
                         expected,
                         new_uv
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_cube_project_uvs() {
+        let (mut cube, _) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        cube.cube_project_uvs(glam::Vec3::ZERO).unwrap();
+
+        assert!(cube.halfedge_uvs.is_some());
+
+        if let Some(ref uvs) = cube.halfedge_uvs {
+            let uv_count = cube.halfedges().filter(|he| uvs.contains_key(*he)).count();
+            assert!(uv_count > 0, "Should have generated UVs for halfedges");
+
+            for he in cube.halfedges() {
+                if let Some(uv) = uvs.get(he) {
+                    assert!(
+                        uv.x >= 0.0 && uv.x <= 1.0,
+                        "UV x should be in [0,1], got {}",
+                        uv.x
+                    );
+                    assert!(
+                        uv.y >= 0.0 && uv.y <= 1.0,
+                        "UV y should be in [0,1], got {}",
+                        uv.y
                     );
                 }
             }

@@ -39,7 +39,7 @@ Interactive example demonstrating all UV unwrapping methods on four different pr
 cargo run --example uv_unwrap --features xatlas
 ```
 
-Press **SPACE** to cycle through UV methods: Planar Z, Planar Y, Cylindrical Y, Spherical, and XAtlas Auto. The four primitives (Cube, Sphere, Cylinder, and a complex extruded shape) update simultaneously to show how each method performs on different geometry.
+Press **SPACE** to cycle through UV methods: Planar Z, Planar Y, Cylindrical Y, Spherical, Cube, and XAtlas Auto. The four primitives (Cube, Sphere, Cylinder, and a complex extruded shape) update simultaneously to show how each method performs on different geometry.
 
 ### Usage
 
@@ -110,6 +110,9 @@ mesh.cylindrical_project_uvs(ProjectionAxis::Y)?;
 
 // Spherical projection
 mesh.spherical_project_uvs(Vec3::ZERO)?;
+
+// Cube projection
+mesh.cube_project_uvs(Vec3::ZERO)?;
 ```
 
 **Automatic UV Unwrapping** via xatlas (requires `xatlas` feature):
