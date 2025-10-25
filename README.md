@@ -33,13 +33,13 @@ _mesh extrusion and manipulation example with the visual debug tools enabled_
 
 **UV Unwrapping Example**
 
-Interactive example demonstrating all UV unwrapping methods on three different primitives (Cube, Sphere, Cylinder) with a checkerboard texture:
+Interactive example demonstrating all UV unwrapping methods on four different primitives with a checkerboard texture:
 
 ```bash
 cargo run --example uv_unwrap --features xatlas
 ```
 
-Press **SPACE** to cycle through UV methods: Planar Z, Planar Y, Cylindrical Y, Spherical, and XAtlas Auto. All three primitives update simultaneously to show how each method performs on different geometry.
+Press **SPACE** to cycle through UV methods: Planar Z, Planar Y, Cylindrical Y, Spherical, and XAtlas Auto. The four primitives (Cube, Sphere, Cylinder, and a complex extruded shape) update simultaneously to show how each method performs on different geometry.
 
 ### Usage
 

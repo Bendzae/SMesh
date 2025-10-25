@@ -30,6 +30,7 @@ enum PrimitiveType {
     Cube,
     Sphere,
     Cylinder,
+    Extrusion,
 }
 
 fn create_primitive(primitive_type: &PrimitiveType) -> SMesh {
@@ -49,7 +50,54 @@ fn create_primitive(primitive_type: &PrimitiveType) -> SMesh {
         .generate()
         .unwrap()
         .0,
+        PrimitiveType::Extrusion => create_extrusion_mesh(),
     }
+}
+
+fn create_extrusion_mesh() -> SMesh {
+    let mut smesh = Cube {
+        subdivision: glam::U16Vec3::new(1, 1, 1),
+    }
+    .generate()
+    .unwrap()
+    .0;
+
+    let top_face = smesh
+        .faces()
+        .find(|&f| {
+            let verts: Vec<_> = f.vertices(&smesh).collect();
+            verts.iter().all(|&v| {
+                smesh.positions.get(v).map(|p| p.y > 0.4).unwrap_or(false)
+            })
+        })
+        .unwrap();
+
+    let extruded = smesh.extrude_faces(vec![top_face]).unwrap();
+    smesh
+        .translate(extruded.clone(), glam::Vec3::Y * 0.2)
+        .unwrap();
+    smesh
+        .scale(
+            extruded.clone(),
+            glam::Vec3::splat(0.3),
+            transform::Pivot::SelectionCog,
+        )
+        .unwrap();
+
+    let extruded2 = smesh.extrude_faces(extruded).unwrap();
+    smesh
+        .translate(extruded2.clone(), glam::Vec3::Y * 0.3)
+        .unwrap();
+    smesh
+        .scale(
+            extruded2,
+            glam::Vec3::splat(0.5),
+            transform::Pivot::SelectionCog,
+        )
+        .unwrap();
+
+    smesh.recalculate_normals().unwrap();
+    smesh
 }
 
 
@@ -99,9 +147,10 @@ fn setup(
     });
 
     let primitives = [
-        (PrimitiveType::Cube, -2.5),
-        (PrimitiveType::Sphere, 0.0),
-        (PrimitiveType::Cylinder, 2.5),
+        (PrimitiveType::Cube, -3.5),
+        (PrimitiveType::Sphere, -1.2),
+        (PrimitiveType::Cylinder, 1.2),
+        (PrimitiveType::Extrusion, 3.5),
     ];
 
     for (primitive_type, x_pos) in primitives {
@@ -141,12 +190,12 @@ fn setup(
 
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 2.0, 8.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 2.0, 10.0).looking_at(Vec3::ZERO, Vec3::Y),
         PanOrbitCamera::default(),
     ));
 
     commands.spawn((
-        Text::new("Press SPACE to cycle UV unwrap methods\n\nCube          Sphere          Cylinder\nCurrent Method: Planar Z"),
+        Text::new("Press SPACE to cycle UV unwrap methods\n\nCube       Sphere       Cylinder      Extrusion\nCurrent Method: Planar Z"),
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(10.0),
@@ -202,7 +251,7 @@ fn update_uv_method(
 
         if let Ok(mut text) = text_query.single_mut() {
             **text = format!(
-                "Press SPACE to cycle UV unwrap methods\n\nCube          Sphere          Cylinder\nCurrent Method: {}",
+                "Press SPACE to cycle UV unwrap methods\n\nCube       Sphere       Cylinder      Extrusion\nCurrent Method: {}",
                 method_name
             );
         }
