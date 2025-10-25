@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use smesh::prelude::*;
-use smesh::smesh::primitives::{Cube, Icosphere, Primitive};
+use smesh::smesh::primitives::{Cube, Cylinder, Icosphere, Primitive};
 use smesh::smesh::uv_operations::ProjectionAxis;
 
 #[derive(Component)]
@@ -41,42 +41,14 @@ fn create_primitive(primitive_type: &PrimitiveType) -> SMesh {
         .unwrap()
         .0,
         PrimitiveType::Sphere => Icosphere { subdivisions: 3 }.generate().unwrap().0,
-        PrimitiveType::Cylinder => {
-            let segments = 32;
-            let height = 1.5;
-            let radius = 0.5;
-            
-            let mut mesh = SMesh::new();
-            
-            let mut top_verts = Vec::new();
-            let mut bottom_verts = Vec::new();
-            
-            for i in 0..segments {
-                let angle = (i as f32 / segments as f32) * std::f32::consts::PI * 2.0;
-                let x = angle.cos() * radius;
-                let z = angle.sin() * radius;
-                
-                bottom_verts.push(mesh.add_vertex(glam::Vec3::new(x, -height / 2.0, z)));
-                top_verts.push(mesh.add_vertex(glam::Vec3::new(x, height / 2.0, z)));
-            }
-            
-            for i in 0..segments {
-                let next = (i + 1) % segments;
-                mesh.make_face(vec![
-                    bottom_verts[i],
-                    top_verts[i],
-                    top_verts[next],
-                    bottom_verts[next],
-                ]).unwrap();
-            }
-            
-            mesh.make_face(bottom_verts.clone()).unwrap();
-            mesh.make_face(top_verts.iter().rev().copied().collect()).unwrap();
-            
-            mesh.recalculate_normals().unwrap();
-            
-            mesh
+        PrimitiveType::Cylinder => Cylinder {
+            segments: 32,
+            height: 1.5,
+            radius: 0.5,
         }
+        .generate()
+        .unwrap()
+        .0,
     }
 }
 

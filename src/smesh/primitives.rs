@@ -516,3 +516,53 @@ mod tests {
         );
     }
 }
+
+pub struct Cylinder {
+    pub segments: usize,
+    pub height: f32,
+    pub radius: f32,
+}
+
+pub struct CylinderData {
+    pub top_face: FaceId,
+    pub bottom_face: FaceId,
+}
+
+impl Primitive<CylinderData> for Cylinder {
+    fn generate(self) -> SMeshResult<(SMesh, CylinderData)> {
+        if self.segments < 3 {
+            bail!("A cylinder must have at least 3 segments.");
+        }
+
+        let mut mesh = SMesh::new();
+        
+        let mut top_verts = Vec::new();
+        let mut bottom_verts = Vec::new();
+        
+        for i in 0..self.segments {
+            let angle = (i as f32 / self.segments as f32) * 2.0 * PI;
+            let x = angle.cos() * self.radius;
+            let z = angle.sin() * self.radius;
+            
+            bottom_verts.push(mesh.add_vertex(vec3(x, -self.height / 2.0, z)));
+            top_verts.push(mesh.add_vertex(vec3(x, self.height / 2.0, z)));
+        }
+        
+        for i in 0..self.segments {
+            let next = (i + 1) % self.segments;
+            mesh.make_face(vec![
+                bottom_verts[i],
+                top_verts[i],
+                top_verts[next],
+                bottom_verts[next],
+            ])?;
+        }
+        
+        let bottom_face = mesh.make_face(bottom_verts.clone())?;
+        let top_face = mesh.make_face(top_verts.iter().rev().copied().collect())?;
+        
+        mesh.recalculate_normals()?;
+        
+        Ok((mesh, CylinderData { top_face, bottom_face }))
+    }
+}
