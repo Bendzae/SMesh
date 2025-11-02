@@ -1,5 +1,7 @@
+use bevy::asset::RenderAssetUsages;
 use bevy::color::palettes::css::WHITE;
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use smesh::prelude::*;
@@ -36,21 +38,25 @@ enum PrimitiveType {
 
 fn create_primitive(primitive_type: &PrimitiveType) -> SMesh {
     match primitive_type {
-        PrimitiveType::Cube => Cube {
-            subdivision: glam::U16Vec3::new(4, 4, 4),
+        PrimitiveType::Cube => {
+            Cube {
+                subdivision: glam::U16Vec3::new(4, 4, 4),
+            }
+            .generate()
+            .unwrap()
+            .0
         }
-        .generate()
-        .unwrap()
-        .0,
         PrimitiveType::Sphere => Icosphere { subdivisions: 3 }.generate().unwrap().0,
-        PrimitiveType::Cylinder => Cylinder {
-            segments: 32,
-            height: 1.5,
-            radius: 0.5,
+        PrimitiveType::Cylinder => {
+            Cylinder {
+                segments: 32,
+                height: 1.5,
+                radius: 0.5,
+            }
+            .generate()
+            .unwrap()
+            .0
         }
-        .generate()
-        .unwrap()
-        .0,
         PrimitiveType::Extrusion => create_extrusion_mesh(),
     }
 }
@@ -67,9 +73,9 @@ fn create_extrusion_mesh() -> SMesh {
         .faces()
         .find(|&f| {
             let verts: Vec<_> = f.vertices(&smesh).collect();
-            verts.iter().all(|&v| {
-                smesh.positions.get(v).map(|p| p.y > 0.4).unwrap_or(false)
-            })
+            verts
+                .iter()
+                .all(|&v| smesh.positions.get(v).map(|p| p.y > 0.4).unwrap_or(false))
         })
         .unwrap();
 
@@ -101,8 +107,6 @@ fn create_extrusion_mesh() -> SMesh {
     smesh
 }
 
-
-
 fn create_checkerboard_texture(images: &mut Assets<Image>) -> Handle<Image> {
     let size = 256;
     let mut data = vec![0u8; (size * size * 4) as usize];
@@ -120,15 +124,15 @@ fn create_checkerboard_texture(images: &mut Assets<Image>) -> Handle<Image> {
     }
 
     let image = Image::new(
-        bevy::render::render_resource::Extent3d {
+        Extent3d {
             width: size,
             height: size,
             depth_or_array_layers: 1,
         },
-        bevy::render::render_resource::TextureDimension::D2,
+        TextureDimension::D2,
         data,
-        bevy::render::render_resource::TextureFormat::Rgba8UnormSrgb,
-        bevy::render::render_asset::RenderAssetUsages::default(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
     );
 
     images.add(image)
@@ -238,9 +242,7 @@ fn update_uv_method(
                     smesh.cylindrical_project_uvs(ProjectionAxis::Y).unwrap();
                 }
                 UVMethod::Spherical => {
-                    smesh
-                        .spherical_project_uvs(glam::Vec3::ZERO)
-                        .unwrap();
+                    smesh.spherical_project_uvs(glam::Vec3::ZERO).unwrap();
                 }
                 UVMethod::Cube => {
                     smesh.cube_project_uvs(glam::Vec3::ZERO).unwrap();
@@ -266,12 +268,9 @@ fn update_uv_method(
 fn main() {
     let mut app = App::new();
 
-    app.add_plugins((
-        DefaultPlugins,
-        PanOrbitCameraPlugin,
-    ))
-    .add_systems(Startup, setup)
-    .add_systems(Update, update_uv_method);
+    app.add_plugins((DefaultPlugins, PanOrbitCameraPlugin))
+        .add_systems(Startup, setup)
+        .add_systems(Update, update_uv_method);
 
     app.run();
 }
