@@ -1,6 +1,6 @@
 use glam::Vec2;
 use slotmap::SecondaryMap;
-use xatlas_rs::{ChartOptions, MeshData, MeshDecl, PackOptions, Xatlas};
+use xatlas_rs_v2::{ChartOptions, MeshData, MeshDecl, PackOptions, Xatlas};
 
 use crate::prelude::*;
 
@@ -47,7 +47,10 @@ impl SMesh {
 
             for he_id in &face_halfedges {
                 let vertex_id = he_id.dst_vert().run(self)?;
-                let pos = self.positions.get(vertex_id).ok_or(SMeshError::TopologyError)?;
+                let pos = self
+                    .positions
+                    .get(vertex_id)
+                    .ok_or(SMeshError::TopologyError)?;
                 positions.push(pos.x);
                 positions.push(pos.y);
                 positions.push(pos.z);
@@ -67,15 +70,17 @@ impl SMesh {
 
         let mesh_decl = MeshDecl {
             vertex_position_data: MeshData::Contiguous(&positions),
-            index_data: Some(xatlas_rs::IndexData::U32(&indices)),
+            index_data: Some(xatlas_rs_v2::IndexData::U32(&indices)),
             face_count: (indices.len() / 3) as u32,
             ..Default::default()
         };
 
         let (uv_data, atlas_width, atlas_height) = {
             let mut atlas = Xatlas::new();
-            
-            atlas.add_mesh(&mesh_decl).map_err(|_| SMeshError::TopologyError)?;
+
+            atlas
+                .add_mesh(&mesh_decl)
+                .map_err(|_| SMeshError::TopologyError)?;
             atlas.generate(&options.chart, &options.pack);
 
             let meshes = atlas.meshes();
@@ -89,10 +94,10 @@ impl SMesh {
                 .iter()
                 .map(|vertex| (vertex.xref as usize, Vec2::new(vertex.uv[0], vertex.uv[1])))
                 .collect::<Vec<_>>();
-            
+
             let width = atlas.width();
             let height = atlas.height();
-            
+
             drop(atlas);
             (result, width, height)
         };

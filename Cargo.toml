@@ -11,11 +11,11 @@ description = "A fast and ergonomic surface-mesh/halfedge-mesh implementation an
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-glam = "0.30.1"                                                                   # Tracking bevys glam version for convencience
+glam = "0.30.1"                                       # Tracking bevys glam version for convencience
 slotmap = "1.0.7"
 itertools = "0.14.0"
 thiserror = "2.0.9"
-xatlas-rs = { git = "https://github.com/PaulWagener/xatlas-rs", optional = true }
+xatlas-rs-v2 = { version = "0.1.4", optional = true } # Optional dependency for UV unwrapping
 
 # Adapter dependencies
 bevy = { version = "0.17", default-features = false, features = [
@@ -36,7 +36,7 @@ fastrand-contrib = "0.1.0"
 [features]
 default = ["bevy_adapter"]
 bevy_adapter = ["dep:bevy"]
-xatlas = ["dep:xatlas-rs"]
+xatlas = ["dep:xatlas-rs-v2"]
 
 [[example]]
 name = "uv_unwrap"
