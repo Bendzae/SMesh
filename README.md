@@ -93,7 +93,111 @@ let vertex = v0.halfedge_to(v1).cw_rotated_neighbour().dst_vert().run(&smesh)?; 
 
 #### Mesh operations
 
-Coming soon...
+SMesh provides a comprehensive set of mesh manipulation operations:
+
+**Topological Operations**
+
+```rust
+// Insert a vertex along an edge
+let new_halfedge = mesh.insert_vertex(halfedge_id, vertex_id)?;
+
+// Delete mesh elements
+mesh.delete_vertex(vertex_id)?;
+mesh.delete_edge(halfedge_id)?;
+mesh.delete_face(face_id)?;
+
+// Edge collapse (for triangle meshes)
+if mesh.is_collapse_ok(halfedge_id).is_ok() {
+    mesh.collapse(halfedge_id)?;
+}
+
+// Remove edge (merges adjacent faces)
+if mesh.is_removal_ok(halfedge_id).is_ok() {
+    mesh.remove_edge(halfedge_id)?;
+}
+```
+
+**Edit Operations**
+
+```rust
+// Extrude a single face
+let new_face = mesh.extrude(face_id)?;
+
+// Extrude multiple faces
+let new_faces = mesh.extrude_faces(vec![face1, face2, face3])?;
+
+// Extrude a boundary edge
+let new_edge = mesh.extrude_edge(halfedge_id)?;
+
+// Extrude a chain of connected boundary edges
+let new_edges = mesh.extrude_edge_chain(vec![edge1, edge2, edge3])?;
+
+// Subdivide faces
+let selection = MeshSelection::from(vec![face1, face2]);
+let new_selection = mesh.subdivide(selection)?;
+
+// Combine two meshes
+mesh.combine_with(other_mesh)?;
+```
+
+**Transform Operations**
+
+All transform operations work with selections (vertices, edges, or faces):
+
+```rust
+use smesh::smesh::transform::Pivot;
+
+// Translate
+mesh.translate(face_id, Vec3::new(0.0, 1.0, 0.0))?;
+
+// Scale around a pivot point
+mesh.scale(
+    vec![face1, face2],
+    Vec3::new(2.0, 2.0, 2.0),
+    Pivot::SelectionCog
+)?;
+
+// Rotate using a quaternion
+mesh.rotate(
+    vertex_id,
+    Quat::from_rotation_y(PI / 4.0),
+    Pivot::Origin
+)?;
+
+// Set position relative to a pivot
+mesh.set_position(selection, Vec3::new(5.0, 0.0, 0.0), Pivot::MeshCog)?;
+```
+
+Available pivot options: `Pivot::Origin`, `Pivot::MeshCog`, `Pivot::SelectionCog`, `Pivot::Point(Vec3)`
+
+**Primitives**
+
+SMesh includes built-in primitive generators:
+
+```rust
+use smesh::smesh::primitives::*;
+
+// Create a cube with subdivisions
+let (cube, data) = Cube {
+    subdivision: U16Vec3::new(2, 2, 2)
+}.generate()?;
+
+// Create an icosphere
+let (sphere, data) = Icosphere {
+    subdivisions: 3
+}.generate()?;
+
+// Create a cylinder
+let (cylinder, data) = Cylinder {
+    segments: 16,
+    height: 2.0,
+    radius: 0.5
+}.generate()?;
+
+// Create other primitives
+let (quad, data) = Quad.generate()?;
+let (circle, data) = Circle { segments: 32 }.generate()?;
+```
 
 Please check the examples for more :)
 
