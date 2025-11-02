@@ -18,7 +18,6 @@ project.
 |---------------|--------------|
 | 0.2.7         | 0.17         |
 | 0.2.5         | 0.16         |
-[blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh implementation.
 
 The goal of this library is to provide a flexible mesh abstraction and
 set of operations to be used for procedural modeling and procedural generation
