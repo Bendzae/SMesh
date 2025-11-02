@@ -1,6 +1,6 @@
 [package]
 name = "smesh"
-version = "0.2.5"
+version = "0.2.6"
 edition = "2021"
 authors = ["Ben Dzaebel <ben@bendz.dev>"]
 homepage = "https://bendz.dev"
@@ -11,13 +11,14 @@ description = "A fast and ergonomic surface-mesh/halfedge-mesh implementation an
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-glam = "0.29"        # Tracking bevys glam version for convencience
+glam = "0.30.1"                                                                   # Tracking bevys glam version for convencience
 slotmap = "1.0.7"
-itertools = "0.13.0"
+itertools = "0.14.0"
 thiserror = "2.0.9"
+xatlas-rs = { git = "https://github.com/PaulWagener/xatlas-rs", optional = true }
 
 # Adapter dependencies
-bevy = { version = "0.16", default-features = false, features = [
+bevy = { version = "0.17", default-features = false, features = [
   "bevy_pbr",
   "bevy_ui",
   "bevy_gizmos",
@@ -25,9 +26,9 @@ bevy = { version = "0.16", default-features = false, features = [
 ], optional = true }
 
 [dev-dependencies]
-bevy = "0.16"
-bevy_panorbit_camera = { version = "0.28", features = ["bevy_egui"] }
-bevy-inspector-egui = "0.33.1"
+bevy = "0.17.2"
+bevy_panorbit_camera = { version = "0.32.0", features = ["bevy_egui"] }
+bevy-inspector-egui = "0.35.0"
 fastrand = "2.3.0"
 fastrand-contrib = "0.1.0"
 
@@ -35,3 +36,8 @@ fastrand-contrib = "0.1.0"
 [features]
 default = ["bevy_adapter"]
 bevy_adapter = ["dep:bevy"]
+xatlas = ["dep:xatlas-rs"]
+
+[[example]]
+name = "uv_unwrap"
+required-features = ["xatlas"]

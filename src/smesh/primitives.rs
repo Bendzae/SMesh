@@ -1,6 +1,6 @@
 use std::{collections::HashMap, f32::consts::PI, usize};
 
-use glam::{vec3, U16Vec3};
+use glam::{vec2, vec3, U16Vec3};
 use itertools::Itertools;
 
 use crate::{bail, prelude::*};
@@ -30,6 +30,9 @@ impl Primitive<CubeData> for Cube {
         let mut smesh = SMesh::new();
         let mut vertex_indices = HashMap::new();
 
+        // Initialize halfedge UVs
+        smesh.halfedge_uvs = Some(Default::default());
+
         // Generate vertices on the cube's surface
         for x in 0..=n_x {
             for y in 0..=n_y {
@@ -58,7 +61,24 @@ impl Primitive<CubeData> for Cube {
                 let v1 = get_vertex(x + 1, y, n_z);
                 let v2 = get_vertex(x + 1, y + 1, n_z);
                 let v3 = get_vertex(x, y + 1, n_z);
-                smesh.make_face(vec![v0, v1, v2, v3])?; // Correct winding
+
+                let u0 = (x as f32) / (n_x as f32);
+                let u1 = ((x + 1) as f32) / (n_x as f32);
+                let v0_coord = (y as f32) / (n_y as f32);
+                let v1_coord = ((y + 1) as f32) / (n_y as f32);
+
+                let face = smesh.make_face(vec![v0, v1, v2, v3])?;
+
+                // Collect halfedges before mutably borrowing smesh
+                let halfedges: Vec<HalfedgeId> = face.halfedges(&smesh).collect();
+
+                // Set UV coordinates for each halfedge of the face
+                if let Some(ref mut uvs) = smesh.halfedge_uvs {
+                    uvs.insert(halfedges[0], vec2(u0, v0_coord));
+                    uvs.insert(halfedges[1], vec2(u1, v0_coord));
+                    uvs.insert(halfedges[2], vec2(u1, v1_coord));
+                    uvs.insert(halfedges[3], vec2(u0, v1_coord));
+                }
             }
         }
 
@@ -69,7 +89,24 @@ impl Primitive<CubeData> for Cube {
                 let v1 = get_vertex(x, y + 1, 0);
                 let v2 = get_vertex(x + 1, y + 1, 0);
                 let v3 = get_vertex(x + 1, y, 0);
-                smesh.make_face(vec![v0, v1, v2, v3])?; // Correct winding
+
+                let u0 = (x as f32) / (n_x as f32);
+                let u1 = ((x + 1) as f32) / (n_x as f32);
+                let v0_coord = (y as f32) / (n_y as f32);
+                let v1_coord = ((y + 1) as f32) / (n_y as f32);
+
+                let face = smesh.make_face(vec![v0, v1, v2, v3])?;
+
+                // Collect halfedges before mutably borrowing smesh
+                let halfedges: Vec<HalfedgeId> = face.halfedges(&smesh).collect();
+
+                // Set UV coordinates for each halfedge of the face
+                if let Some(ref mut uvs) = smesh.halfedge_uvs {
+                    uvs.insert(halfedges[0], vec2(u0, v0_coord));
+                    uvs.insert(halfedges[1], vec2(u0, v1_coord));
+                    uvs.insert(halfedges[2], vec2(u1, v1_coord));
+                    uvs.insert(halfedges[3], vec2(u1, v0_coord));
+                }
             }
         }
 
@@ -80,7 +117,24 @@ impl Primitive<CubeData> for Cube {
                 let v1 = get_vertex(0, y, z + 1);
                 let v2 = get_vertex(0, y + 1, z + 1);
                 let v3 = get_vertex(0, y + 1, z);
-                smesh.make_face(vec![v0, v1, v2, v3])?; // Corrected winding
+
+                let u0 = (z as f32) / (n_z as f32);
+                let u1 = ((z + 1) as f32) / (n_z as f32);
+                let v0_coord = (y as f32) / (n_y as f32);
+                let v1_coord = ((y + 1) as f32) / (n_y as f32);
+
+                let face = smesh.make_face(vec![v0, v1, v2, v3])?;
+
+                // Collect halfedges before mutably borrowing smesh
+                let halfedges: Vec<HalfedgeId> = face.halfedges(&smesh).collect();
+
+                // Set UV coordinates for each halfedge of the face
+                if let Some(ref mut uvs) = smesh.halfedge_uvs {
+                    uvs.insert(halfedges[0], vec2(u0, v0_coord));
+                    uvs.insert(halfedges[1], vec2(u1, v0_coord));
+                    uvs.insert(halfedges[2], vec2(u1, v1_coord));
+                    uvs.insert(halfedges[3], vec2(u0, v1_coord));
+                }
             }
         }
 
@@ -91,7 +145,24 @@ impl Primitive<CubeData> for Cube {
                 let v1 = get_vertex(n_x, y + 1, z);
                 let v2 = get_vertex(n_x, y + 1, z + 1);
                 let v3 = get_vertex(n_x, y, z + 1);
-                smesh.make_face(vec![v0, v1, v2, v3])?; // Corrected winding
+
+                let u0 = (z as f32) / (n_z as f32);
+                let u1 = ((z + 1) as f32) / (n_z as f32);
+                let v0_coord = (y as f32) / (n_y as f32);
+                let v1_coord = ((y + 1) as f32) / (n_y as f32);
+
+                let face = smesh.make_face(vec![v0, v1, v2, v3])?;
+
+                // Collect halfedges before mutably borrowing smesh
+                let halfedges: Vec<HalfedgeId> = face.halfedges(&smesh).collect();
+
+                // Set UV coordinates for each halfedge of the face
+                if let Some(ref mut uvs) = smesh.halfedge_uvs {
+                    uvs.insert(halfedges[0], vec2(u0, v0_coord));
+                    uvs.insert(halfedges[1], vec2(u0, v1_coord));
+                    uvs.insert(halfedges[2], vec2(u1, v1_coord));
+                    uvs.insert(halfedges[3], vec2(u1, v0_coord));
+                }
             }
         }
 
@@ -102,7 +173,24 @@ impl Primitive<CubeData> for Cube {
                 let v1 = get_vertex(x, n_y, z + 1);
                 let v2 = get_vertex(x + 1, n_y, z + 1);
                 let v3 = get_vertex(x + 1, n_y, z);
-                smesh.make_face(vec![v0, v1, v2, v3])?; // Corrected winding
+
+                let u0 = (x as f32) / (n_x as f32);
+                let u1 = ((x + 1) as f32) / (n_x as f32);
+                let v0_coord = (z as f32) / (n_z as f32);
+                let v1_coord = ((z + 1) as f32) / (n_z as f32);
+
+                let face = smesh.make_face(vec![v0, v1, v2, v3])?;
+
+                // Collect halfedges before mutably borrowing smesh
+                let halfedges: Vec<HalfedgeId> = face.halfedges(&smesh).collect();
+
+                // Set UV coordinates for each halfedge of the face
+                if let Some(ref mut uvs) = smesh.halfedge_uvs {
+                    uvs.insert(halfedges[0], vec2(u0, v0_coord));
+                    uvs.insert(halfedges[1], vec2(u0, v1_coord));
+                    uvs.insert(halfedges[2], vec2(u1, v1_coord));
+                    uvs.insert(halfedges[3], vec2(u1, v0_coord));
+                }
             }
         }
 
@@ -113,7 +201,24 @@ impl Primitive<CubeData> for Cube {
                 let v1 = get_vertex(x + 1, 0, z);
                 let v2 = get_vertex(x + 1, 0, z + 1);
                 let v3 = get_vertex(x, 0, z + 1);
-                smesh.make_face(vec![v0, v1, v2, v3])?; // Corrected winding
+
+                let u0 = (x as f32) / (n_x as f32);
+                let u1 = ((x + 1) as f32) / (n_x as f32);
+                let v0_coord = (z as f32) / (n_z as f32);
+                let v1_coord = ((z + 1) as f32) / (n_z as f32);
+
+                let face = smesh.make_face(vec![v0, v1, v2, v3])?;
+
+                // Collect halfedges before mutably borrowing smesh
+                let halfedges: Vec<HalfedgeId> = face.halfedges(&smesh).collect();
+
+                // Set UV coordinates for each halfedge of the face
+                if let Some(ref mut uvs) = smesh.halfedge_uvs {
+                    uvs.insert(halfedges[0], vec2(u0, v0_coord));
+                    uvs.insert(halfedges[1], vec2(u1, v0_coord));
+                    uvs.insert(halfedges[2], vec2(u1, v1_coord));
+                    uvs.insert(halfedges[3], vec2(u0, v1_coord));
+                }
             }
         }
 
@@ -341,5 +446,123 @@ impl Primitive<CircleData> for Circle {
 
         smesh.recalculate_normals()?;
         Ok((smesh, CircleData { face }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cube_has_uvs() {
+        let (cube, _data) = Cube {
+            subdivision: U16Vec3::new(1, 1, 1),
+        }
+        .generate()
+        .unwrap();
+
+        // Check that per-halfedge UVs exist
+        assert!(
+            cube.halfedge_uvs.is_some(),
+            "Cube should have per-halfedge UV coordinates"
+        );
+
+        let uvs = cube.halfedge_uvs.as_ref().unwrap();
+
+        // Check that we have UV coordinates for some halfedges
+        let halfedge_count = cube.halfedges().count();
+        let uv_count = uvs.len();
+
+        // Only inner halfedges (those belonging to faces) should have UVs
+        assert!(
+            uv_count > 0 && uv_count <= halfedge_count,
+            "Some halfedges should have UV coordinates"
+        );
+
+        // Check that all UV coordinates are in valid range [0, 1]
+        for he_id in cube.halfedges() {
+            if let Some(&uv) = uvs.get(he_id) {
+                assert!(
+                    uv.x >= 0.0 && uv.x <= 1.0,
+                    "UV x coordinate should be in [0, 1]"
+                );
+                assert!(
+                    uv.y >= 0.0 && uv.y <= 1.0,
+                    "UV y coordinate should be in [0, 1]"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_cube_with_subdivisions_has_uvs() {
+        let (cube, _data) = Cube {
+            subdivision: U16Vec3::new(2, 3, 4),
+        }
+        .generate()
+        .unwrap();
+
+        assert!(
+            cube.halfedge_uvs.is_some(),
+            "Subdivided cube should have per-halfedge UV coordinates"
+        );
+
+        let uvs = cube.halfedge_uvs.as_ref().unwrap();
+        let uv_count = uvs.len();
+
+        assert!(
+            uv_count > 0,
+            "Subdivided cube should have UV coordinates on some halfedges"
+        );
+    }
+}
+
+pub struct Cylinder {
+    pub segments: usize,
+    pub height: f32,
+    pub radius: f32,
+}
+
+pub struct CylinderData {
+    pub top_face: FaceId,
+    pub bottom_face: FaceId,
+}
+
+impl Primitive<CylinderData> for Cylinder {
+    fn generate(self) -> SMeshResult<(SMesh, CylinderData)> {
+        if self.segments < 3 {
+            bail!("A cylinder must have at least 3 segments.");
+        }
+
+        let mut mesh = SMesh::new();
+        
+        let mut top_verts = Vec::new();
+        let mut bottom_verts = Vec::new();
+        
+        for i in 0..self.segments {
+            let angle = (i as f32 / self.segments as f32) * 2.0 * PI;
+            let x = angle.cos() * self.radius;
+            let z = angle.sin() * self.radius;
+            
+            bottom_verts.push(mesh.add_vertex(vec3(x, -self.height / 2.0, z)));
+            top_verts.push(mesh.add_vertex(vec3(x, self.height / 2.0, z)));
+        }
+        
+        for i in 0..self.segments {
+            let next = (i + 1) % self.segments;
+            mesh.make_face(vec![
+                bottom_verts[i],
+                top_verts[i],
+                top_verts[next],
+                bottom_verts[next],
+            ])?;
+        }
+        
+        let bottom_face = mesh.make_face(bottom_verts.clone())?;
+        let top_face = mesh.make_face(top_verts.iter().rev().copied().collect())?;
+        
+        mesh.recalculate_normals()?;
+        
+        Ok((mesh, CylinderData { top_face, bottom_face }))
     }
 }

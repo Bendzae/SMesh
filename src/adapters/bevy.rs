@@ -1,21 +1,9 @@
 use attribute::CustomAttributeMapOps;
 use bevy::{
-    app::{Plugin, Update},
-    color::{
+    app::{Plugin, Update}, asset::RenderAssetUsages, color::{
         palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW},
         Srgba,
-    },
-    input::ButtonInput,
-    log::{info, warn},
-    math::Isometry3d,
-    prelude::*,
-    render::{
-        mesh::{Indices, Mesh, PrimitiveTopology},
-        render_asset::RenderAssetUsages,
-    },
-    text::TextFont,
-    transform::components::Transform,
-    ui::{FlexDirection, Node, UiRect, Val},
+    }, input::ButtonInput, log::{info, warn}, math::Isometry3d, mesh::{Indices, PrimitiveTopology}, prelude::*, text::TextFont, transform::components::Transform, ui::{FlexDirection, Node, UiRect, Val}
 };
 use glam::{bool, Vec2, Vec3};
 use itertools::Itertools;
@@ -67,19 +55,42 @@ impl SMesh {
         for face_id in self.faces() {
             let face_normal = self.face_normals.as_ref().map(|n| n[face_id]);
             let vertices: Vec<VertexId> = face_id.vertices(self).collect();
+            let halfedges: Vec<HalfedgeId> = face_id.halfedges(self).collect();
 
             let v1 = vertices[0];
+            let he1 = halfedges[0];
 
-            for (&v2, &v3) in vertices[1..].iter().tuple_windows() {
+            for (i, (&v2, &v3)) in vertices[1..].iter().tuple_windows().enumerate() {
+                let he2 = halfedges[i + 1];
+                let he3 = halfedges[i + 2];
+
+                // Always duplicate vertices for each triangle
                 positions.push(self.positions[v1]);
                 positions.push(self.positions[v2]);
                 positions.push(self.positions[v3]);
 
-                if let Some(mesh_uvs) = self.uvs.as_ref() {
-                    uvs.push(mesh_uvs[v1]);
-                    uvs.push(mesh_uvs[v2]);
-                    uvs.push(mesh_uvs[v3]);
+                // Try per-halfedge UVs first, fall back to per-vertex UVs
+                if let Some(he_uvs) = self.halfedge_uvs.as_ref() {
+                    // Check if all three halfedges have UVs
+                    if let (Some(&uv1), Some(&uv2), Some(&uv3)) =
+                        (he_uvs.get(he1), he_uvs.get(he2), he_uvs.get(he3))
+                    {
+                        uvs.push(uv1);
+                        uvs.push(uv2);
+                        uvs.push(uv3);
+                    } else if let Some(vertex_uvs) = self.vertex_uvs.as_ref() {
+                        // Fall back to per-vertex UVs
+                        uvs.push(vertex_uvs[v1]);
+                        uvs.push(vertex_uvs[v2]);
+                        uvs.push(vertex_uvs[v3]);
+                    }
+                } else if let Some(vertex_uvs) = self.vertex_uvs.as_ref() {
+                    // Use per-vertex UVs
+                    uvs.push(vertex_uvs[v1]);
+                    uvs.push(vertex_uvs[v2]);
+                    uvs.push(vertex_uvs[v3]);
                 }
+
                 if let Some(normal) = face_normal {
                     normals.push(normal);
                     normals.push(normal);
@@ -191,7 +202,7 @@ fn debug_draw_smesh(
             .vertices(mesh)
             .map(|v| *mesh.positions.get(v).unwrap());
         let count = vertex_positions.clone().count() as f32;
-        let relative_center = vertex_positions.fold(Vec3::ZERO, |acc, pos| (acc + pos)) / count;
+        let relative_center = vertex_positions.fold(Vec3::ZERO, |acc, pos| acc + pos) / count;
         let center = t.transform_point(relative_center);
         let color = if debug_smesh.selection == Selection::Face(face_id) {
             ORANGE_RED

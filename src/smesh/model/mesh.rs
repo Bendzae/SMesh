@@ -15,7 +15,8 @@ pub struct SMesh {
     pub positions: SecondaryMap<VertexId, Vec3>,
     pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
     pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
-    pub uvs: Option<SecondaryMap<VertexId, Vec2>>,
+    pub vertex_uvs: Option<SecondaryMap<VertexId, Vec2>>,
+    pub halfedge_uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
     pub vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
     pub edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
     pub face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
@@ -350,7 +351,7 @@ impl MeshMutator<'_, FaceId> {
         Ok(())
     }
 
-    pub fn delete(mut self) -> SMeshResult<()> {
+    pub fn delete(self) -> SMeshResult<()> {
         self.conn.faces.remove(self.value);
         Ok(())
     }

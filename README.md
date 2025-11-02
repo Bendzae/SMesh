@@ -12,7 +12,12 @@ data structure and the [pmp](https://github.com/pmp-library/pmp-library)
 library and the halfedge-mesh implementation of the [blackjack](https://github.com/setzer22/blackjack)
 project.
 
-The libary uses a slotmap based implementation of the Surface Mesh which takes heavy inspiration from
+## Version Compatibility
+
+| SMesh Version | Bevy Version |
+|---------------|--------------|
+| 0.2.7         | 0.17         |
+| 0.2.5         | 0.16         |
 [blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh implementation.
 
 The goal of this library is to provide a flexible mesh abstraction and
@@ -30,6 +35,16 @@ _parameterized procedural mesh generation_
 _mesh extrusion and manipulation example with the visual debug tools enabled_
 
 `cargo run --example extrude`
+
+**UV Unwrapping Example**
+
+Interactive example demonstrating all UV unwrapping methods on four different primitives with a checkerboard texture:
+
+```bash
+cargo run --example uv_unwrap --features xatlas
+```
+
+Press **SPACE** to cycle through UV methods: Planar Z, Planar Y, Cylindrical Y, Spherical, Cube, and XAtlas Auto. The four primitives (Cube, Sphere, Cylinder, and a complex extruded shape) update simultaneously to show how each method performs on different geometry.
 
 ### Usage
 
@@ -82,6 +97,48 @@ let vertex = v0.halfedge_to(v1).cw_rotated_neighbour().dst_vert().run(&smesh)?; 
 Coming soon...
 
 Please check the examples for more :)
+
+#### UV Unwrapping
+
+SMesh supports both simple projection-based UV mapping and automatic UV unwrapping via xatlas.
+
+**Simple Projection Methods** (built-in, no features required):
+
+```rust
+use smesh::smesh::uv_operations::ProjectionAxis;
+
+// Planar projection
+mesh.planar_project_uvs(ProjectionAxis::Z)?;
+
+// Cylindrical projection
+mesh.cylindrical_project_uvs(ProjectionAxis::Y)?;
+
+// Spherical projection
+mesh.spherical_project_uvs(Vec3::ZERO)?;
+
+// Cube projection
+mesh.cube_project_uvs(Vec3::ZERO)?;
+```
+
+**Automatic UV Unwrapping** via xatlas (requires `xatlas` feature):
+
+```toml
+[dependencies]
+smesh = { version = "0.2", features = ["xatlas"] }
+```
+
+Then generate UVs for your mesh:
+
+```rust
+// Simple automatic unwrapping
+mesh.auto_uv_unwrap()?;
+
+// With custom options
+use smesh::smesh::xatlas_integration::XatlasOptions;
+
+let options = XatlasOptions::default();
+mesh.auto_uv_unwrap_with_options(options)?;
+```
 
 ### Goals
 

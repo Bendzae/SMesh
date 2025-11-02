@@ -229,7 +229,7 @@ impl VertexOps for VertexId {
     }
 
     fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2> {
-        if let Some(uvs) = &mesh.uvs {
+        if let Some(uvs) = &mesh.vertex_uvs {
             return uvs
                 .get(self)
                 .copied()
@@ -252,6 +252,7 @@ pub trait HalfedgeOps {
     fn is_boundary(&self, mesh: &SMesh) -> bool;
     // TODO: temp workaround
     fn is_boundary_c(&self, connectivity: &Connectivity) -> bool;
+    fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2>;
 }
 impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
     fn vert(&self) -> MeshQueryBuilder<VertexId> {
@@ -288,6 +289,11 @@ impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
     // TODO: temp wortkaround
     fn is_boundary_c(&self, connectivity: &Connectivity) -> bool {
         self.face().run(connectivity).is_err()
+    }
+
+    fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2> {
+        let v = self.run(mesh)?;
+        v.uv(mesh)
     }
 }
 
@@ -334,6 +340,16 @@ impl HalfedgeOps for HalfedgeId {
 
     fn is_boundary_c(&self, connectivity: &Connectivity) -> bool {
         self.q().is_boundary_c(connectivity)
+    }
+
+    fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2> {
+        if let Some(uvs) = &mesh.halfedge_uvs {
+            return uvs
+                .get(self)
+                .copied()
+                .ok_or(SMeshError::CustomError("Halfedge has no uv attribute"));
+        }
+        bail!("No attribute map for uvs exists");
     }
 }
 pub trait FaceOps {
