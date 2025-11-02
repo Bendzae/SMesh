@@ -12,7 +12,12 @@ data structure and the [pmp](https://github.com/pmp-library/pmp-library)
 library and the halfedge-mesh implementation of the [blackjack](https://github.com/setzer22/blackjack)
 project.
 
-The libary uses a slotmap based implementation of the Surface Mesh which takes heavy inspiration from
+## Version Compatibility
+
+| SMesh Version | Bevy Version |
+|---------------|--------------|
+| 0.2.7         | 0.17         |
+| 0.2.5         | 0.16         |
 [blackjacks](https://github.com/setzer22/blackjack) halfedge-mesh implementation.
 
 The goal of this library is to provide a flexible mesh abstraction and

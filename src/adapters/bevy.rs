@@ -1,21 +1,9 @@
 use attribute::CustomAttributeMapOps;
 use bevy::{
-    app::{Plugin, Update},
-    color::{
+    app::{Plugin, Update}, asset::RenderAssetUsages, color::{
         palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW},
         Srgba,
-    },
-    input::ButtonInput,
-    log::{info, warn},
-    math::Isometry3d,
-    prelude::*,
-    render::{
-        mesh::{Indices, Mesh, PrimitiveTopology},
-        render_asset::RenderAssetUsages,
-    },
-    text::TextFont,
-    transform::components::Transform,
-    ui::{FlexDirection, Node, UiRect, Val},
+    }, input::ButtonInput, log::{info, warn}, math::Isometry3d, mesh::{Indices, PrimitiveTopology}, prelude::*, text::TextFont, transform::components::Transform, ui::{FlexDirection, Node, UiRect, Val}
 };
 use glam::{bool, Vec2, Vec3};
 use itertools::Itertools;

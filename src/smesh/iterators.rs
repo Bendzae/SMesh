@@ -196,6 +196,9 @@ impl FaceIterators for FaceId {
 }
 
 mod test {
+    use glam::vec3;
+    use itertools::Itertools;
+    use crate::prelude::*;
     
     
     
