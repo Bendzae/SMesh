@@ -15,12 +15,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - uses: taiki-e/install-action@nextest
-      - name: Install alsa
+      - name: Install Linux dependencies
         if: ${{ runner.os == 'Linux' }}
-        run: sudo apt-get update; sudo apt-get install --no-install-recommends libasound2-dev
-      - name: Install udev
-        if: ${{ runner.os == 'Linux' }}
-        run: sudo apt-get update; sudo apt-get install --no-install-recommends libudev-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            libasound2-dev \
+            libudev-dev \
+            libwayland-dev \
+            libxkbcommon-dev
       - name: "Build and test"
         run: cargo nextest run --workspace --all-targets --all-features
 
