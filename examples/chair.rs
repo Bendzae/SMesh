@@ -263,7 +263,7 @@ fn update_chair_system(
 fn init_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    config: Res<ShowcaseConfig>,
+    _config: Res<ShowcaseConfig>,
 ) {
     commands.insert_resource(ChairParameters::default());
 
@@ -277,12 +277,11 @@ fn init_system(
     ));
 
     // Camera with orbit controls
-    let cam_offset = Vec3::new(0.5, 0.4, 0.7) * config.camera_distance;
     commands.spawn((
         Camera3d::default(),
         Msaa::Sample4,
-        Transform::from_translation(config.look_at + cam_offset)
-            .looking_at(config.look_at, Vec3::Y),
+        Transform::from_translation(vec3(0.9, 0.65, 1.1))
+            .looking_at(vec3(0.0, 0.35, 0.0), Vec3::Y),
         PanOrbitCamera::default(),
     ));
 }
