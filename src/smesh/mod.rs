@@ -5,6 +5,7 @@ use crate::smesh::mesh_query::*;
 pub mod attribute;
 pub mod edit_operations;
 pub mod error;
+pub mod introspection;
 pub mod iterators;
 pub mod loops;
 pub mod mesh_query;
@@ -15,6 +16,7 @@ pub mod topological_operations;
 pub mod transform;
 pub mod util;
 pub mod uv_operations;
+pub mod validation;
 
 #[cfg(feature = "xatlas")]
 pub mod xatlas_integration;

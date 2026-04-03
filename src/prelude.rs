@@ -1,7 +1,7 @@
 pub use crate::smesh::{
-    error::*, iterators::*, mesh_query::*, model::connectivity::*,
+    error::*, introspection::*, iterators::*, mesh_query::*, model::connectivity::*,
     model::mesh::*, model::mesh_elements::*, selection::*,
-    uv_operations::*, *,
+    uv_operations::*, validation::*, *,
 };
 
 pub use slotmap::SecondaryMap;
