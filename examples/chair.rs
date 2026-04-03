@@ -68,8 +68,6 @@ const CROSS_RAIL_DEPTH: f32 = 0.022;
 const STRETCHER_SIZE: f32 = 0.018;
 const STRETCHER_Y: f32 = 0.09;
 
-// Mid stretcher (connects side stretchers)
-const MID_STRETCHER_Y: f32 = 0.12;
 
 /// Helper: create a box with given dimensions centered at a position.
 fn make_box(width: f32, height: f32, depth: f32, position: Vec3) -> SMeshResult<SMesh> {
@@ -424,14 +422,6 @@ fn generate_chair() -> SMeshResult<SMesh> {
         stretcher_span_z,
         vec3(SEAT_WIDTH / 2.0 - LEG_INSET, STRETCHER_Y, 0.0),
     )?)?;
-    // Center cross stretcher (connecting the two side stretchers)
-    mesh.combine_with(make_box(
-        stretcher_span_x,
-        STRETCHER_SIZE,
-        STRETCHER_SIZE,
-        vec3(0.0, MID_STRETCHER_Y, 0.0),
-    )?)?;
-
     eprintln!("=== After stretchers ===\n{}", mesh.describe());
 
     // === Tag regions ===
