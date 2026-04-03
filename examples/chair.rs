@@ -310,32 +310,49 @@ fn init_system(
         })),
     ));
 
-    // Ground plane
+    // Ground plane — dark wood floor
     commands.spawn((
         Mesh3d(meshes.add(Plane3d::default())),
         MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.22, 0.20, 0.18),
-            perceptual_roughness: 1.0,
+            base_color: Color::srgb(0.18, 0.12, 0.08),
+            perceptual_roughness: 0.85,
+            reflectance: 0.3,
             ..default()
         })),
         Transform::from_scale(Vec3::splat(10.0)),
     ));
 
+    // Key light — warm directional from upper-left, casting shadows
     commands.spawn((
         DirectionalLight {
-            illuminance: light_consts::lux::OVERCAST_DAY,
+            illuminance: light_consts::lux::OVERCAST_DAY * 1.5,
             shadows_enabled: true,
+            color: Color::srgb(1.0, 0.95, 0.85),
             ..default()
         },
-        Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, PI / 3.0, -PI / 4.0)),
+        Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, PI / 4.0, -PI / 3.5)),
     ));
 
+    // Fill light — cooler point light from the right side
     commands.spawn((
         PointLight {
-            intensity: 200_000.0,
+            intensity: 150_000.0,
+            color: Color::srgb(0.85, 0.9, 1.0),
+            shadows_enabled: false,
             ..default()
         },
-        Transform::from_translation(vec3(-3.0, 4.0, 5.0)),
+        Transform::from_translation(vec3(2.5, 2.0, 1.5)),
+    ));
+
+    // Rim/back light — warm accent from behind to highlight edges
+    commands.spawn((
+        PointLight {
+            intensity: 100_000.0,
+            color: Color::srgb(1.0, 0.85, 0.6),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_translation(vec3(-1.0, 1.5, -2.0)),
     ));
 
     commands.spawn((
@@ -351,8 +368,8 @@ fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
         .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 300.0,
+            color: Color::srgb(0.95, 0.90, 0.80),
+            brightness: 150.0,
             affects_lightmapped_meshes: true,
         })
         .add_plugins((
