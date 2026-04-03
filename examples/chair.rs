@@ -9,7 +9,7 @@ use glam::vec3;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseConfig, ShowcasePlugin},
+    adapters::bevy::{DebugRenderSMesh, Selection, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -263,7 +263,6 @@ fn update_chair_system(
 fn init_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    _config: Res<ShowcaseConfig>,
 ) {
     commands.insert_resource(ChairParameters::default());
 
@@ -288,10 +287,6 @@ fn init_system(
 
 fn main() {
     App::new()
-        .insert_resource(ShowcaseConfig {
-            look_at: Vec3::new(0.0, 0.4, -0.05),
-            camera_distance: 2.5,
-        })
         .add_plugins((DefaultPlugins, ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
         .add_plugins(ResourceInspectorPlugin::<ChairParameters>::default())
         .add_systems(Startup, init_system)

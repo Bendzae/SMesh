@@ -374,25 +374,6 @@ fn update_ui_system(
 
 // === Showcase Plugin ===
 
-/// Configuration for the showcase scene setup.
-#[derive(Resource, Clone)]
-pub struct ShowcaseConfig {
-    /// Where the camera looks at. Defaults to mesh center.
-    pub look_at: Vec3,
-    /// Camera distance multiplier. The camera is placed at `distance * bounding_radius`
-    /// from the look_at point. Default: 2.5.
-    pub camera_distance: f32,
-}
-
-impl Default for ShowcaseConfig {
-    fn default() -> Self {
-        Self {
-            look_at: Vec3::new(0.0, 0.4, 0.0),
-            camera_distance: 2.5,
-        }
-    }
-}
-
 /// Plugin that sets up a reusable showcase scene for displaying meshes.
 ///
 /// Provides:
@@ -400,21 +381,17 @@ impl Default for ShowcaseConfig {
 /// - Warm ambient light
 /// - Three-point lighting (key, fill, rim)
 /// - Dark wood ground plane
-/// - Camera positioned based on [`ShowcaseConfig`]
 /// - `SMeshDebugDrawPlugin`
 ///
-/// Insert a [`ShowcaseConfig`] resource before adding this plugin to customize
-/// camera framing. If not inserted, defaults are used.
+/// Examples should spawn their own camera (with orbit controls etc.).
 ///
 /// # Example
 /// ```ignore
 /// App::new()
 ///     .add_plugins((DefaultPlugins, ShowcasePlugin))
 ///     .add_systems(Startup, |mut commands: Commands, ...| {
-///         commands.spawn((
-///             Mesh3d(mesh_handle),
-///             MeshMaterial3d(material_handle),
-///         ));
+///         commands.spawn((Camera3d::default(), Transform::from_xyz(1.0, 1.0, 1.0)));
+///         commands.spawn((Mesh3d(mesh_handle), MeshMaterial3d(material_handle)));
 ///     })
 ///     .run();
 /// ```
@@ -428,7 +405,6 @@ impl Plugin for ShowcasePlugin {
                 brightness: 150.0,
                 affects_lightmapped_meshes: true,
             })
-            .init_resource::<ShowcaseConfig>()
             .add_plugins(SMeshDebugDrawPlugin)
             .add_systems(Startup, showcase_setup);
     }
