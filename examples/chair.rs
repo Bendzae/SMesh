@@ -174,6 +174,14 @@ fn generate_chair() -> SMeshResult<SMesh> {
     eprintln!("Tags: {:?}", mesh.tag_names());
 
     mesh.recalculate_normals()?;
+
+    // Render preview images for visual verification
+    #[cfg(feature = "preview")]
+    {
+        let paths = mesh.save_previews(512, 512, "/tmp").unwrap();
+        eprintln!("Saved previews: {:?}", paths);
+    }
+
     Ok(mesh)
 }
 

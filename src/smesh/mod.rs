@@ -20,5 +20,8 @@ pub mod util;
 pub mod uv_operations;
 pub mod validation;
 
+#[cfg(feature = "preview")]
+pub mod preview;
+
 #[cfg(feature = "xatlas")]
 pub mod xatlas_integration;
