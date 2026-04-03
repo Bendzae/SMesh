@@ -43,7 +43,7 @@ impl Default for RockPileParameters {
             rock_size_variation: 0.5,
             roughness: 0.12,
             num_extrusions: 3,
-            subdivisions: 1,
+            subdivisions: 2,
             seed: 42,
         }
     }
@@ -148,15 +148,32 @@ fn make_rock(
         rock.subdivide(all)?;
     }
 
-    // Vertex displacement for surface roughness
-    if roughness > 0.001 {
+    // Spherize: push vertices toward a uniform distance from center
+    // This rounds out the blocky subdivided shape while preserving bumps
+    {
         let center = rock.center_of_gravity(rock.select_all())?;
         let verts: Vec<VertexId> = rock.vertices().collect();
-        for v in verts {
+        // Compute average distance from center
+        let mut avg_dist = 0.0f32;
+        let mut count = 0u32;
+        for &v in &verts {
+            if let Ok(pos) = v.position(&rock) {
+                avg_dist += (pos - center).length();
+                count += 1;
+            }
+        }
+        avg_dist /= count.max(1) as f32;
+
+        // Blend each vertex toward the sphere surface + add roughness noise
+        let spherize_strength = 0.5; // 0=keep shape, 1=perfect sphere
+        for &v in &verts {
             if let Ok(pos) = v.position(&rock) {
                 let dir = (pos - center).normalize_or_zero();
-                let displacement = dir * rng.range(-roughness, roughness) * base_size;
-                rock.positions.insert(v, pos + displacement);
+                let current_dist = (pos - center).length();
+                let target_dist = current_dist + (avg_dist - current_dist) * spherize_strength;
+                let noise = rng.range(-roughness, roughness) * base_size;
+                let new_pos = center + dir * (target_dist + noise);
+                rock.positions.insert(v, new_pos);
             }
         }
     }
