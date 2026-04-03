@@ -114,6 +114,136 @@ impl SMesh {
 
         Ok(new_faces)
     }
+    /// Inset a single face by creating a smaller inner face connected to the
+    /// original boundary by quad side faces. The inner face vertices are
+    /// moved toward the face centroid by `amount` (0.0 = no inset, 1.0 =
+    /// collapsed to centroid). Returns the new inner face.
+    pub fn inset(&mut self, face: FaceId, amount: f32) -> SMeshResult<FaceId> {
+        let vertices = face.vertices(self).collect_vec();
+        let centroid = self.get_face_centroid(face)?;
+
+        // Create new vertices lerped toward centroid
+        let mut vertex_pairs = Vec::new();
+        for v in &vertices {
+            let pos = v.position(self)?;
+            let new_pos = pos + (centroid - pos) * amount;
+            vertex_pairs.push((*v, self.add_vertex(new_pos)));
+        }
+
+        self.delete_only_face(face)?;
+
+        // Create quad side faces connecting outer to inner
+        for ((old_0, new_0), (old_1, new_1)) in
+            vertex_pairs.iter().copied().circular_tuple_windows()
+        {
+            self.make_quad(old_0, old_1, new_1, new_0)?;
+        }
+
+        // Create inner face
+        let inner_face =
+            self.make_face(vertex_pairs.iter().map(|(_old, new)| *new).collect_vec())?;
+        Ok(inner_face)
+    }
+
+    /// Inset multiple faces together. Shared edges between selected faces
+    /// are preserved (no side quads are created along them). Returns the
+    /// new inner faces.
+    pub fn inset_faces(
+        &mut self,
+        faces: Vec<FaceId>,
+        amount: f32,
+    ) -> SMeshResult<Vec<FaceId>> {
+        // Step 1: Compute centroid per face and create new inset vertices
+        let mut vertex_map: HashMap<VertexId, VertexId> = HashMap::new();
+        let mut face_centroids: HashMap<FaceId, glam::Vec3> = HashMap::new();
+
+        for &face in &faces {
+            let centroid = self.get_face_centroid(face)?;
+            face_centroids.insert(face, centroid);
+        }
+
+        // For each face, figure out which centroid to use for each vertex.
+        // A vertex shared by multiple selected faces gets averaged centroids.
+        let mut vertex_centroid_sum: HashMap<VertexId, (glam::Vec3, u32)> = HashMap::new();
+        for &face in &faces {
+            let centroid = face_centroids[&face];
+            for v in face.vertices(self) {
+                let entry = vertex_centroid_sum.entry(v).or_insert((glam::Vec3::ZERO, 0));
+                entry.0 += centroid;
+                entry.1 += 1;
+            }
+        }
+
+        // Create inset vertices
+        for (&v, &(centroid_sum, count)) in &vertex_centroid_sum {
+            let avg_centroid = centroid_sum / count as f32;
+            let pos = v.position(self)?;
+            let new_pos = pos + (avg_centroid - pos) * amount;
+            vertex_map.insert(v, self.add_vertex(new_pos));
+        }
+
+        // Step 2: Collect face vertices before deletion
+        let mut face_vertex_map: HashMap<FaceId, Vec<VertexId>> = HashMap::new();
+        for &face in &faces {
+            face_vertex_map.insert(face, face.vertices(self).collect_vec());
+        }
+
+        // Step 3: Find boundary vs inner half-edges
+        let selected_faces: HashSet<FaceId> = faces.iter().cloned().collect();
+        let mut boundary_half_edges = Vec::new();
+        let mut inner_half_edges = Vec::new();
+        let mut boundary_vertices = Vec::new();
+
+        for &face in &faces {
+            for he in face.halfedges(self) {
+                let opp = he.opposite().run(self)?;
+                let adj_face = opp.face().run(self).ok();
+                if adj_face.is_none() || !selected_faces.contains(&adj_face.unwrap()) {
+                    boundary_half_edges.push(he);
+                    boundary_vertices.push(he.src_vert().run(self)?);
+                    boundary_vertices.push(he.dst_vert().run(self)?);
+                } else if selected_faces.contains(&adj_face.unwrap()) {
+                    inner_half_edges.push(he);
+                }
+            }
+        }
+
+        // Step 4: Delete old faces/edges
+        if faces.len() == 1 {
+            self.delete_only_face(*faces.first().unwrap())?;
+        }
+        for vertex in faces
+            .iter()
+            .flat_map(|f| f.vertices(self))
+            .filter(|v| !boundary_vertices.contains(v))
+            .collect_vec()
+        {
+            self.delete_vertex(vertex)?;
+        }
+        for he in inner_half_edges {
+            self.delete_only_edge(he)?;
+        }
+
+        // Step 5: Create quad side faces along boundary edges
+        for edge in &boundary_half_edges {
+            let src_old = edge.src_vert().run(self)?;
+            let dst_old = edge.dst_vert().run(self)?;
+            let src_new = vertex_map[&src_old];
+            let dst_new = vertex_map[&dst_old];
+            self.make_quad(src_old, dst_old, dst_new, src_new)?;
+        }
+
+        // Step 6: Create inner faces
+        let mut new_faces = Vec::new();
+        for &face in &faces {
+            let old_verts = &face_vertex_map[&face];
+            let new_verts = old_verts.iter().map(|&v| vertex_map[&v]).collect_vec();
+            new_faces.push(self.make_face(new_verts)?);
+        }
+
+        Ok(new_faces)
+    }
+
     pub fn extrude_edge(&mut self, e0: HalfedgeId) -> SMeshResult<HalfedgeId> {
         // Find boundary halfedge
         let e0 = match e0.is_boundary(self) {
@@ -378,6 +508,113 @@ impl SMesh {
         // for attr in self.vertex_attributes {
         //
         // }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use glam::vec3;
+
+    use super::*;
+
+    #[test]
+    fn inset_single_quad() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(-1.0, 0.0, -1.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, -1.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 0.0, 1.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 0.0, 1.0));
+        let f = mesh.make_quad(v0, v1, v2, v3)?;
+
+        // 1 face, 4 verts, 4 edges
+        assert_eq!(mesh.faces().len(), 1);
+        assert_eq!(mesh.vertices().len(), 4);
+
+        let inner = mesh.inset(f, 0.5)?;
+
+        // Should now have: 4 side quads + 1 inner face = 5 faces
+        assert_eq!(mesh.faces().len(), 5);
+        // 4 original + 4 inner = 8 vertices
+        assert_eq!(mesh.vertices().len(), 8);
+
+        // Inner face centroid should be at the original centroid (origin)
+        let inner_centroid = mesh.get_face_centroid(inner)?;
+        assert!(inner_centroid.length() < 0.01);
+
+        // Inner face should be smaller — check one vertex
+        let inner_v = inner.vertices(mesh).next().unwrap();
+        let pos = inner_v.position(mesh)?;
+        // At 50% inset, vertices should be halfway to centroid
+        assert!(pos.x.abs() < 0.6, "Inner vertex should be inset, got x={}", pos.x);
+        assert!(pos.z.abs() < 0.6, "Inner vertex should be inset, got z={}", pos.z);
+
+        Ok(())
+    }
+
+    #[test]
+    fn inset_zero_amount_preserves_shape() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(-1.0, 0.0, -1.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, -1.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 0.0, 1.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 0.0, 1.0));
+        let f = mesh.make_quad(v0, v1, v2, v3)?;
+
+        let inner = mesh.inset(f, 0.0)?;
+
+        // Inner face should be same size as original (zero inset)
+        let inner_v: Vec<_> = inner.vertices(mesh).collect();
+        for v in inner_v {
+            let pos = v.position(mesh)?;
+            assert!(
+                (pos.x.abs() - 1.0).abs() < 0.01 && (pos.z.abs() - 1.0).abs() < 0.01,
+                "At 0 inset, inner verts should match original positions"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn inset_triangle() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(0.5, 0.0, 1.0));
+        let f = mesh.make_triangle(v0, v1, v2)?;
+
+        let inner = mesh.inset(f, 0.3)?;
+
+        // 3 side quads + 1 inner tri = 4 faces
+        assert_eq!(mesh.faces().len(), 4);
+        assert_eq!(inner.valence(mesh), 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn inset_faces_multiple() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(-1.0, 0.0, -1.0));
+        let v1 = mesh.add_vertex(vec3(0.0, 0.0, -1.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 0.0, -1.0));
+        let v3 = mesh.add_vertex(vec3(1.0, 0.0, 1.0));
+        let v4 = mesh.add_vertex(vec3(0.0, 0.0, 1.0));
+        let v5 = mesh.add_vertex(vec3(-1.0, 0.0, 1.0));
+        let f0 = mesh.make_quad(v0, v1, v4, v5)?;
+        let f1 = mesh.make_quad(v1, v2, v3, v4)?;
+
+        assert_eq!(mesh.faces().len(), 2);
+
+        let inner = mesh.inset_faces(vec![f0, f1], 0.3)?;
+        assert_eq!(inner.len(), 2);
+
+        // Shared edge between f0 and f1 should not produce side quads
+        // Boundary edges: 6 (top, bottom, left, right of the 2x1 strip)
+        // So: 6 side quads + 2 inner faces = 8 faces
+        assert_eq!(mesh.faces().len(), 8);
+
         Ok(())
     }
 }

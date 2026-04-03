@@ -59,35 +59,42 @@ fn generate_chair() -> SMeshResult<SMesh> {
     eprintln!("Bottom faces found: {}", bottom_faces.len());
     assert_eq!(bottom_faces.len(), 4, "Expected 4 bottom quads from 2x1x2 cube");
 
-    // Build each leg: extrude bottom face, scale to leg cross-section,
-    // extrude down for length, then shift the whole leg to the corner.
+    // Inset each bottom face to create the leg cross-section at the right
+    // size and position, then extrude straight down. This avoids the flared
+    // transition that extrude+scale creates.
     for face in &bottom_faces {
         let face_center = mesh.get_face_centroid(*face)?;
 
-        // Extrude + scale to leg cross-section
-        let leg_top = mesh.extrude(*face)?;
-        let leg_scale = LEG_THICKNESS / (SEAT_WIDTH * 0.5);
-        mesh.scale(leg_top, vec3(leg_scale, 1.0, leg_scale), Pivot::SelectionCog)?;
+        // Inset to create a smaller face within each bottom quad.
+        // amount = how far toward centroid (0=no inset, 1=collapsed).
+        // We want the inner face sized to LEG_THICKNESS.
+        // Each bottom quad is (SEAT_WIDTH/2) x (SEAT_DEPTH/2).
+        // inset amount = 1 - (LEG_THICKNESS / quarter_size)
+        let quarter_w = SEAT_WIDTH / 2.0;
+        let quarter_d = SEAT_DEPTH / 2.0;
+        let avg_quarter = (quarter_w + quarter_d) / 2.0;
+        let inset_amount = 1.0 - (LEG_THICKNESS / avg_quarter);
+        let leg_face = mesh.inset(*face, inset_amount.clamp(0.1, 0.95))?;
 
-        // Extrude down for leg length
-        let leg_bottom = mesh.extrude(leg_top)?;
-        mesh.translate(leg_bottom, vec3(0.0, -SEAT_HEIGHT, 0.0))?;
-
-        // Shift the entire leg (top + bottom faces, so the column moves
-        // as a unit) toward the nearest seat corner
-        let inset = LEG_THICKNESS * 0.5 + 0.01; // small margin from edge
+        // Shift the inset face toward the nearest corner of the seat
+        let leg_center = mesh.get_face_centroid(leg_face)?;
+        let margin = LEG_THICKNESS * 0.5 + 0.005;
         let corner_x = if face_center.x > 0.0 {
-            SEAT_WIDTH / 2.0 - inset
+            SEAT_WIDTH / 2.0 - margin
         } else {
-            -SEAT_WIDTH / 2.0 + inset
+            -SEAT_WIDTH / 2.0 + margin
         };
         let corner_z = if face_center.z > 0.0 {
-            SEAT_DEPTH / 2.0 - inset
+            SEAT_DEPTH / 2.0 - margin
         } else {
-            -SEAT_DEPTH / 2.0 + inset
+            -SEAT_DEPTH / 2.0 + margin
         };
-        let shift = vec3(corner_x - face_center.x, 0.0, corner_z - face_center.z);
-        mesh.translate(vec![leg_top, leg_bottom], shift)?;
+        let shift = vec3(corner_x - leg_center.x, 0.0, corner_z - leg_center.z);
+        mesh.translate(leg_face, shift)?;
+
+        // Extrude straight down for leg length
+        let leg_bottom = mesh.extrude(leg_face)?;
+        mesh.translate(leg_bottom, vec3(0.0, -SEAT_HEIGHT, 0.0))?;
     }
 
     mesh.tag(
