@@ -20,7 +20,8 @@ Before writing any code, read these source files to understand the smesh API:
 6. **Tags** — `src/smesh/tags.rs` (tag, get_tag, take_tag for naming mesh regions)
 7. **Spatial queries** — `src/smesh/spatial_queries.rs` (faces_facing, nearest_vertex, query_region, raycast)
 8. **Preview rendering** — `src/smesh/preview.rs` (render_previews, render, save_preview_with_options, PreviewOptions)
-9. **Existing examples** — Read `examples/chair.rs` and `examples/tree.rs` to understand patterns
+9. **Showcase plugin** — `src/adapters/bevy.rs` (ShowcasePlugin — provides lights, ground, ambient)
+10. **Chair example** — Read `examples/chair.rs` as the reference pattern for the full workflow
 
 Read ALL of these files before writing code. Do not guess at the API.
 
@@ -31,33 +32,65 @@ Before coding, write a brief plan:
 - What dimensions should each part have? (use real-world meters as reference)
 - What operations will shape each part? (extrude, inset, scale, etc.)
 - How will parts connect? (connected via extrude, or separate via combine_with)
+- Which parameters should be user-tunable via the inspector UI?
 
 Define dimension constants at the top of your function for easy tuning.
 
 ## Step 3: Write the Generation Function
 
-Create a function `fn generate_<object>() -> SMeshResult<SMesh>` that:
+Create a function that accepts a parameters struct:
 
-1. **Builds geometry step by step**, verifying after each major step
-2. **Uses `faces_facing()` and spatial queries** to find faces by direction/position instead of tracking IDs through long chains
-3. **Tags important regions** with `mesh.tag(selection, "name")` so you can refer to them later
-4. **Uses `take_tag("name")`** when you need an owned selection for mutation (translate, scale, etc.)
-5. **Uses `inset` then `extrude`** for creating protrusions (not extrude+scale, which creates tapered transitions)
-6. **Calls `recalculate_normals()`** at the end
+```rust
+fn generate_<object>(params: &<Object>Parameters) -> SMeshResult<SMesh>
+```
+
+### Helper functions
+
+Define these helpers — they make building from separate parts much cleaner:
+
+```rust
+fn make_box(width: f32, height: f32, depth: f32, position: Vec3) -> SMeshResult<SMesh> {
+    let (mut part, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
+    let all = part.select_all();
+    part.scale(all.clone(), vec3(width, height, depth), Pivot::Origin)?;
+    part.translate(all, position)?;
+    Ok(part)
+}
+
+fn make_cylinder(radius: f32, height: f32, segments: usize, position: Vec3) -> SMeshResult<SMesh> {
+    let (mut cyl, _) = primitives::Cylinder { segments, height, radius }.generate()?;
+    let all = cyl.select_all();
+    cyl.translate(all, position)?;
+    Ok(cyl)
+}
+
+fn make_sphere(radius: f32, subdivisions: usize, position: Vec3) -> SMeshResult<SMesh> {
+    let (mut sphere, _) = primitives::Icosphere { subdivisions }.generate()?;
+    let all = sphere.select_all();
+    sphere.scale(all.clone(), Vec3::splat(radius * 2.0), Pivot::Origin)?;
+    sphere.translate(all, position)?;
+    Ok(sphere)
+}
+```
+
+### Key principles
+
+1. **Prefer `combine_with` for separate parts** — building each part as its own primitive (box, cylinder) and combining produces much cleaner geometry than trying to extrude everything from one mesh.
+2. **Use `inset` then `extrude`** for protrusions that grow from a surface — not extrude+scale, which creates tapered/flared transitions.
+3. **Use `faces_facing()` and spatial queries** to find faces by direction/position instead of tracking IDs.
+4. **Tag important regions** with `mesh.tag(selection, "name")`.
+5. **Call `recalculate_normals()`** at the end.
 
 ### Key API patterns:
 
 ```rust
-// Start from a primitive
-let (mut mesh, _) = primitives::Cube { subdivision: U16Vec3::new(2, 1, 2) }.generate()?;
-
-// Scale and position
-mesh.scale(mesh.select_all(), vec3(width, height, depth), Pivot::Origin)?;
-mesh.translate(mesh.select_all(), vec3(0.0, y_offset, 0.0))?;
+// Build parts separately and combine
+let mut mesh = SMesh::new();
+mesh.combine_with(make_box(0.5, 0.04, 0.4, vec3(0.0, 0.48, 0.0))?)?;
+mesh.combine_with(make_cylinder(0.02, 0.46, 8, vec3(0.2, 0.23, 0.15))?)?;
 
 // Find faces by direction (instead of tracking IDs)
 let top_faces = mesh.faces_facing(Vec3::Y, FRAC_PI_4);
-let bottom_faces = mesh.faces_facing(Vec3::NEG_Y, FRAC_PI_4);
 
 // Filter faces by position
 let back_faces: Vec<FaceId> = mesh.faces_facing(Vec3::NEG_Z, FRAC_PI_4)
@@ -70,16 +103,14 @@ let inner = mesh.inset(face, 0.7)?;  // 0.0=no change, 1.0=collapsed
 let top = mesh.extrude(inner)?;
 mesh.translate(top, Vec3::Y * height)?;
 
-// Tag for later reference
-mesh.tag(top_faces.clone(), "roof");
+// Rotate a part before combining (e.g., diamond ornament)
+let (mut diamond, _) = primitives::Cube { subdivision: U16Vec3::ONE }.generate()?;
+let all = diamond.select_all();
+diamond.scale(all.clone(), vec3(0.03, 0.03, 0.02), Pivot::Origin)?;
+diamond.rotate(all.clone(), Quat::from_rotation_z(PI / 4.0), Pivot::Origin)?;
+diamond.translate(all, position)?;
+mesh.combine_with(diamond)?;
 
-// Combine separate meshes
-let (mut part, _) = primitives::Cube { subdivision: U16Vec3::ONE }.generate()?;
-part.scale(part.select_all(), dims, Pivot::Origin)?;
-part.translate(part.select_all(), position)?;
-mesh.combine_with(part)?;
-
-// Always recalculate normals at the end
 mesh.recalculate_normals()?;
 ```
 
@@ -94,22 +125,12 @@ eprintln!("=== After <step> ===\n{}", report);
 // Assert dimensions match your intent
 assert!((report.dimensions.x - EXPECTED_WIDTH).abs() < 0.01,
     "Width should be ~{}, got {}", EXPECTED_WIDTH, report.dimensions.x);
-
-// Check topology
-assert!(report.is_manifold, "Mesh should be manifold");
-
-// Check tagged regions
-if let Some(sel) = mesh.take_tag("part_name") {
-    let part_report = mesh.describe_selection(sel);
-    eprintln!("=== Part ===\n{}", part_report);
-}
 ```
 
 **Run `mesh.validate()`** and check for issues:
 ```rust
 let validation = mesh.validate();
 eprintln!("{}", validation);
-// Fix any degenerate faces, non-manifold vertices, etc.
 ```
 
 ## Step 5: Visual Verification (CRITICAL)
@@ -125,56 +146,106 @@ Render preview images and LOOK at them before finishing:
         .with_wireframe();
     let paths = mesh.save_preview_with_options(&opts, "/tmp").unwrap();
     eprintln!("Saved previews: {:?}", paths);
-    // READ THE IMAGES to verify the mesh looks correct
 }
 ```
 
-After saving, **read the image files** to visually inspect the result. Check:
+After saving, **read the image files** (`/tmp/front.png`, `/tmp/right.png`, `/tmp/top.png`, `/tmp/diagonal.png`) to visually inspect the result. Check:
 - Are proportions correct?
 - Are all parts visible and in the right positions?
 - Does the wireframe show the expected face structure?
 - Are there any holes or missing faces?
 
-If something looks wrong, go back to Step 3 and fix it. This visual check is the most important verification step.
+If something looks wrong, go back and fix it. This visual check is the most important verification step.
 
 ## Step 6: Create the Example
 
-Structure the example file like the existing ones (see `examples/chair.rs`):
+Use `ShowcasePlugin` for scene setup (lights, ground, ambient). Make key parameters
+tunable via `bevy-inspector-egui`. Follow `examples/chair.rs` as the reference.
 
 ```rust
+use std::f32::consts::PI;
 use bevy::prelude::*;
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::{
+    bevy_egui::EguiPlugin,
+    inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
+};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use glam::vec3;
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
+    adapters::bevy::{DebugRenderSMesh, Selection, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
 use transform::Pivot;
 
-fn generate_<object>() -> SMeshResult<SMesh> {
-    // ... generation code with verification ...
+#[derive(Reflect, Resource, InspectorOptions, Clone)]
+#[reflect(Resource, InspectorOptions)]
+struct ObjectParameters {
+    #[inspector(min = 0.1, max = 1.0)]
+    pub width: f32,
+    // ... more params with inspector bounds
 }
 
-fn init_system(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>) {
-    let mesh = generate_<object>().unwrap();
-    let v0 = mesh.vertices().next().unwrap();
+impl Default for ObjectParameters { ... }
+
+#[derive(Component)]
+struct ObjectTag;
+
+fn generate_object(params: &ObjectParameters) -> SMeshResult<SMesh> {
+    // ... generation code ...
+}
+
+fn update_system(
+    params: Res<ObjectParameters>,
+    objects: Query<Entity, With<ObjectTag>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    if params.is_changed() {
+        for e in &objects {
+            let smesh = generate_object(&params).unwrap();
+            let v0 = smesh.vertices().next().unwrap();
+            commands.entity(e).insert((
+                Mesh3d(meshes.add(Mesh::from(smesh.clone()))),
+                DebugRenderSMesh { mesh: smesh, selection: Selection::Vertex(v0), visible: false },
+            ));
+        }
+    }
+}
+
+fn init_system(mut commands: Commands, mut materials: ResMut<Assets<StandardMaterial>>) {
+    commands.insert_resource(ObjectParameters::default());
 
     commands.spawn((
-        Mesh3d(meshes.add(Mesh::from(mesh.clone()))),
-        MeshMaterial3d(materials.add(StandardMaterial { base_color: Color::srgb(0.6, 0.35, 0.15), ..default() })),
-        DebugRenderSMesh { mesh, selection: Selection::Vertex(v0), visible: false },
+        ObjectTag,
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.6, 0.35, 0.15),
+            perceptual_roughness: 0.7,
+            ..default()
+        })),
     ));
 
-    // Add ground plane, lights, camera (see chair.rs for full pattern)
+    // Camera — use PanOrbitCamera fields, NOT Transform (Transform gets overwritten)
+    commands.spawn((
+        Camera3d::default(),
+        Msaa::Sample4,
+        PanOrbitCamera {
+            focus: vec3(0.0, 0.45, 0.0),  // center of your object
+            radius: Some(2.0),
+            yaw: Some(0.6),
+            pitch: Some(0.4),
+            ..default()
+        },
+    ));
 }
 
 fn main() {
     App::new()
-        .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(AmbientLight { color: Color::WHITE, brightness: 300.0, ..default() })
-        .add_plugins((DefaultPlugins, PanOrbitCameraPlugin, SMeshDebugDrawPlugin, EguiPlugin::default()))
+        .add_plugins((DefaultPlugins, ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
+        .add_plugins(ResourceInspectorPlugin::<ObjectParameters>::default())
         .add_systems(Startup, init_system)
+        .add_systems(Update, update_system)
+        .register_type::<ObjectParameters>()
         .run();
 }
 
@@ -183,12 +254,10 @@ mod tests {
     use super::*;
     #[test]
     fn generates_valid_mesh() {
-        let mesh = generate_<object>().unwrap();
+        let mesh = generate_object(&ObjectParameters::default()).unwrap();
         let report = mesh.describe();
-        let validation = mesh.validate();
         assert!(report.vertex_count > 0);
         assert!(report.is_manifold);
-        // Add dimension checks specific to the object
     }
 }
 ```
@@ -208,5 +277,7 @@ mod tests {
 - **Don't use extrude + scale for protrusions** — creates tapered/flared transitions. Use inset + extrude instead.
 - **Don't track FaceIds through long chains** — use faces_facing() and spatial queries to re-find faces after operations.
 - **Don't forget recalculate_normals()** — shading will be wrong without it.
-- **Don't build the backrest by extruding vertical faces upward** — extrude horizontal (top-facing) faces instead, then scale thin.
-- **For separate parts** (that don't need to share edges), use combine_with() with separate Cube/Cylinder primitives — it's simpler and produces cleaner geometry.
+- **Don't set camera position via Transform when using PanOrbitCamera** — it overrides Transform on the first frame. Set `focus`, `radius`, `yaw`, `pitch` fields on PanOrbitCamera instead.
+- **For separate parts** (that don't need to share edges), use combine_with() with separate Cube/Cylinder primitives — it's simpler and produces cleaner geometry than trying to extrude everything from one mesh.
+- **Use helper functions** (`make_box`, `make_cylinder`, `make_sphere`) — they dramatically reduce code and errors when building multi-part objects.
+- **Use ShowcasePlugin** — don't manually set up lights, ground plane, ambient. Just add it as a plugin.
