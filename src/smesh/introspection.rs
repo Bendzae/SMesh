@@ -30,6 +30,55 @@ pub struct FaceTypeBreakdown {
     pub ngons: usize,
 }
 
+/// Report scoped to a selection of elements.
+#[derive(Debug, Clone)]
+pub struct SelectionReport {
+    pub vertex_count: usize,
+    pub face_count: usize,
+    pub bounding_box: (Vec3, Vec3),
+    pub dimensions: Vec3,
+    pub center: Vec3,
+    pub face_type_breakdown: FaceTypeBreakdown,
+}
+
+impl fmt::Display for SelectionReport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Selection: {} vertices, {} faces",
+            self.vertex_count, self.face_count,
+        )?;
+        writeln!(
+            f,
+            "  Bounding box: ({:.3}, {:.3}, {:.3}) to ({:.3}, {:.3}, {:.3})",
+            self.bounding_box.0.x,
+            self.bounding_box.0.y,
+            self.bounding_box.0.z,
+            self.bounding_box.1.x,
+            self.bounding_box.1.y,
+            self.bounding_box.1.z,
+        )?;
+        writeln!(
+            f,
+            "  Dimensions: {:.3} x {:.3} x {:.3}",
+            self.dimensions.x, self.dimensions.y, self.dimensions.z,
+        )?;
+        writeln!(
+            f,
+            "  Center: ({:.3}, {:.3}, {:.3})",
+            self.center.x, self.center.y, self.center.z,
+        )?;
+        writeln!(
+            f,
+            "  Faces: {} tris, {} quads, {} ngons",
+            self.face_type_breakdown.triangles,
+            self.face_type_breakdown.quads,
+            self.face_type_breakdown.ngons,
+        )?;
+        Ok(())
+    }
+}
+
 /// Per-face spatial report for debugging specific regions.
 #[derive(Debug, Clone)]
 pub struct FaceReport {
@@ -188,6 +237,57 @@ impl SMesh {
             face_type_breakdown: breakdown,
             boundary_loops,
             connected_components,
+        }
+    }
+
+    /// Returns a report scoped to a selection of elements.
+    /// Useful for inspecting tagged regions (e.g. "backrest", "legs").
+    pub fn describe_selection<S: Into<MeshSelection>>(&self, selection: S) -> SelectionReport {
+        let sel = selection.into();
+        let vertices = sel.resolve_to_vertices(self).unwrap_or_default();
+        let faces = sel.resolve_to_faces(self).unwrap_or_default();
+
+        let vertex_count = vertices.len();
+        let face_count = faces.len();
+
+        let (bb_min, bb_max, center) = if !vertices.is_empty() {
+            let mut min = Vec3::splat(f32::INFINITY);
+            let mut max = Vec3::splat(f32::NEG_INFINITY);
+            let mut sum = Vec3::ZERO;
+            let mut count = 0u32;
+            for &v in &vertices {
+                if let Some(&pos) = self.positions.get(v) {
+                    min = min.min(pos);
+                    max = max.max(pos);
+                    sum += pos;
+                    count += 1;
+                }
+            }
+            if count > 0 {
+                (min, max, sum / count as f32)
+            } else {
+                (Vec3::ZERO, Vec3::ZERO, Vec3::ZERO)
+            }
+        } else {
+            (Vec3::ZERO, Vec3::ZERO, Vec3::ZERO)
+        };
+
+        let mut breakdown = FaceTypeBreakdown::default();
+        for &face in &faces {
+            match face.valence(self) {
+                3 => breakdown.triangles += 1,
+                4 => breakdown.quads += 1,
+                _ => breakdown.ngons += 1,
+            }
+        }
+
+        SelectionReport {
+            vertex_count,
+            face_count,
+            bounding_box: (bb_min, bb_max),
+            dimensions: bb_max - bb_min,
+            center: center,
+            face_type_breakdown: breakdown,
         }
     }
 
