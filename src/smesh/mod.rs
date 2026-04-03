@@ -12,6 +12,8 @@ pub mod mesh_query;
 pub mod model;
 pub mod primitives;
 pub mod selection;
+pub mod spatial_queries;
+pub mod tags;
 pub mod topological_operations;
 pub mod transform;
 pub mod util;

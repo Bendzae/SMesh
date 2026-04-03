@@ -20,6 +20,9 @@ pub struct SMesh {
     pub vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
     pub edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
     pub face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
+
+    // Named element groups for tagging selections
+    pub(crate) tags: HashMap<String, MeshSelection>,
 }
 
 /// Init, Getters

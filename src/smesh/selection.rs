@@ -18,6 +18,13 @@ impl MeshSelection {
         MeshSelection::default()
     }
 
+    /// Merge another selection into this one.
+    pub fn merge(&mut self, other: &MeshSelection) {
+        self.vertices.extend(&other.vertices);
+        self.halfedges.extend(&other.halfedges);
+        self.faces.extend(&other.faces);
+    }
+
     pub fn resolve_to_vertices(&self, smesh: &SMesh) -> SMeshResult<HashSet<VertexId>> {
         let mut vertices = self.vertices.clone();
         for he in &self.halfedges {
