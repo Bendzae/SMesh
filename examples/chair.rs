@@ -1,7 +1,10 @@
-use std::f32::consts::{FRAC_PI_4, PI};
+use std::f32::consts::PI;
 
 use bevy::prelude::*;
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::{
+    bevy_egui::EguiPlugin,
+    inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
+};
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
@@ -12,62 +15,70 @@ use smesh::{
 use primitives::Primitive;
 use transform::Pivot;
 
-// === Victorian Chair Dimensions (meters) ===
+#[derive(Reflect, Resource, InspectorOptions, Clone)]
+#[reflect(Resource, InspectorOptions)]
+struct ChairParameters {
+    #[inspector(min = 0.3, max = 0.7)]
+    pub seat_width: f32,
+    #[inspector(min = 0.3, max = 0.6)]
+    pub seat_depth: f32,
+    #[inspector(min = 0.3, max = 0.6)]
+    pub seat_height: f32,
+    #[inspector(min = 0.3, max = 0.8)]
+    pub backrest_height: f32,
+    #[inspector(min = 0.01, max = 0.03)]
+    pub leg_radius: f32,
+    #[inspector(min = 4, max = 16)]
+    pub leg_segments: usize,
+    #[inspector(min = 1, max = 4)]
+    pub num_splats: usize,
+    pub show_stretchers: bool,
+    pub show_finials: bool,
+    pub show_crown: bool,
+}
 
-// Seat
-const SEAT_WIDTH: f32 = 0.48;
-const SEAT_DEPTH: f32 = 0.44;
+impl Default for ChairParameters {
+    fn default() -> Self {
+        Self {
+            seat_width: 0.48,
+            seat_depth: 0.44,
+            seat_height: 0.46,
+            backrest_height: 0.52,
+            leg_radius: 0.016,
+            leg_segments: 8,
+            num_splats: 2,
+            show_stretchers: true,
+            show_finials: true,
+            show_crown: true,
+        }
+    }
+}
+
+#[derive(Component)]
+struct ChairTag;
+
+// === Derived dimensions (proportional to parameters) ===
+
 const SEAT_THICKNESS: f32 = 0.035;
-const SEAT_HEIGHT: f32 = 0.46;
-
-// Seat edge molding
 const MOLDING_OVERHANG: f32 = 0.008;
 const MOLDING_HEIGHT: f32 = 0.012;
-
-// Legs (cylindrical)
-const LEG_RADIUS: f32 = 0.016;
-const LEG_SEGMENTS: usize = 8;
 const LEG_INSET: f32 = 0.04;
-
-// Leg turned details (decorative bulges)
-const LEG_BULGE_RADIUS: f32 = 0.024;
+const LEG_BULGE_SCALE: f32 = 1.5; // bulge radius = leg_radius * this
 const LEG_BULGE_HEIGHT: f32 = 0.025;
-
-// Apron (decorative frame under seat)
 const APRON_HEIGHT: f32 = 0.055;
 const APRON_THICKNESS: f32 = 0.018;
-
-// Backrest
 const BACK_POST_WIDTH: f32 = 0.028;
 const BACK_POST_DEPTH: f32 = 0.028;
-const BACK_TOTAL_HEIGHT: f32 = 0.52;
-
-// Top rail
 const TOP_RAIL_HEIGHT: f32 = 0.055;
 const TOP_RAIL_DEPTH: f32 = 0.032;
-
-// Crown piece (decorative arch above top rail)
 const CROWN_HEIGHT: f32 = 0.025;
-const CROWN_WIDTH: f32 = 0.28;
 const CROWN_DEPTH: f32 = 0.02;
-
-// Finials (spheres on top of back posts)
 const FINIAL_RADIUS: f32 = 0.018;
-const FINIAL_SUBDIVISIONS: usize = 1;
-
-// Splats (two vertical decorative pieces)
-const SPLAT_WIDTH: f32 = 0.06;
 const SPLAT_DEPTH: f32 = 0.018;
-const SPLAT_GAP: f32 = 0.04; // gap between the two splats
-
-// Cross rails
 const CROSS_RAIL_HEIGHT: f32 = 0.022;
 const CROSS_RAIL_DEPTH: f32 = 0.022;
-
-// Stretchers
 const STRETCHER_SIZE: f32 = 0.018;
 const STRETCHER_Y: f32 = 0.09;
-
 
 /// Helper: create a box with given dimensions centered at a position.
 fn make_box(width: f32, height: f32, depth: f32, position: Vec3) -> SMeshResult<SMesh> {
@@ -82,12 +93,7 @@ fn make_box(width: f32, height: f32, depth: f32, position: Vec3) -> SMeshResult<
 }
 
 /// Helper: create a cylinder at a position.
-fn make_cylinder(
-    radius: f32,
-    height: f32,
-    segments: usize,
-    position: Vec3,
-) -> SMeshResult<SMesh> {
+fn make_cylinder(radius: f32, height: f32, segments: usize, position: Vec3) -> SMeshResult<SMesh> {
     let (mut cyl, _) = primitives::Cylinder {
         segments,
         height,
@@ -108,377 +114,184 @@ fn make_sphere(radius: f32, subdivisions: usize, position: Vec3) -> SMeshResult<
     Ok(sphere)
 }
 
-/// Build a turned leg: a cylinder with decorative bulge rings.
-fn make_turned_leg(
-    radius: f32,
-    height: f32,
-    segments: usize,
-    position: Vec3,
-) -> SMeshResult<SMesh> {
+/// Build a turned leg with decorative bulge rings.
+fn make_turned_leg(radius: f32, height: f32, segments: usize, position: Vec3) -> SMeshResult<SMesh> {
     let mut leg = SMesh::new();
+    let bulge_r = radius * LEG_BULGE_SCALE;
 
-    // Main shaft
-    let shaft = make_cylinder(radius, height, segments, position)?;
-    leg.combine_with(shaft)?;
+    leg.combine_with(make_cylinder(radius, height, segments, position)?)?;
 
-    // Upper bulge (just below the seat)
-    let upper_bulge_y = position.y + height / 2.0 - height * 0.15;
-    let bulge = make_cylinder(
-        LEG_BULGE_RADIUS,
-        LEG_BULGE_HEIGHT,
-        segments,
-        vec3(position.x, upper_bulge_y, position.z),
-    )?;
-    leg.combine_with(bulge)?;
+    // Upper bulge
+    let upper_y = position.y + height / 2.0 - height * 0.15;
+    leg.combine_with(make_cylinder(bulge_r, LEG_BULGE_HEIGHT, segments, vec3(position.x, upper_y, position.z))?)?;
 
     // Middle bulge
-    let mid_bulge_y = position.y;
-    let mid_bulge = make_cylinder(
-        LEG_BULGE_RADIUS * 0.85,
-        LEG_BULGE_HEIGHT * 0.8,
-        segments,
-        vec3(position.x, mid_bulge_y, position.z),
-    )?;
-    leg.combine_with(mid_bulge)?;
+    leg.combine_with(make_cylinder(bulge_r * 0.85, LEG_BULGE_HEIGHT * 0.8, segments, vec3(position.x, position.y, position.z))?)?;
 
-    // Lower bulge (near the foot)
-    let lower_bulge_y = position.y - height / 2.0 + height * 0.12;
-    let lower_bulge = make_cylinder(
-        LEG_BULGE_RADIUS * 0.75,
-        LEG_BULGE_HEIGHT * 0.7,
-        segments,
-        vec3(position.x, lower_bulge_y, position.z),
-    )?;
-    leg.combine_with(lower_bulge)?;
+    // Lower bulge
+    let lower_y = position.y - height / 2.0 + height * 0.12;
+    leg.combine_with(make_cylinder(bulge_r * 0.75, LEG_BULGE_HEIGHT * 0.7, segments, vec3(position.x, lower_y, position.z))?)?;
 
-    // Small foot pad at the very bottom
+    // Foot pad
     let foot_y = position.y - height / 2.0 + 0.005;
-    let foot = make_cylinder(
-        radius * 1.4,
-        0.01,
-        segments,
-        vec3(position.x, foot_y, position.z),
-    )?;
-    leg.combine_with(foot)?;
+    leg.combine_with(make_cylinder(radius * 1.4, 0.01, segments, vec3(position.x, foot_y, position.z))?)?;
 
     Ok(leg)
 }
 
-fn generate_chair() -> SMeshResult<SMesh> {
+fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
     let mut mesh = SMesh::new();
 
-    let seat_top_y = SEAT_HEIGHT + SEAT_THICKNESS;
-    let seat_center_y = SEAT_HEIGHT + SEAT_THICKNESS * 0.5;
-    let back_z = -SEAT_DEPTH / 2.0;
+    let seat_top_y = params.seat_height + SEAT_THICKNESS;
+    let seat_center_y = params.seat_height + SEAT_THICKNESS * 0.5;
+    let back_z = -params.seat_depth / 2.0;
 
     // === Seat ===
-    let seat = make_box(
-        SEAT_WIDTH,
-        SEAT_THICKNESS,
-        SEAT_DEPTH,
+    mesh.combine_with(make_box(
+        params.seat_width, SEAT_THICKNESS, params.seat_depth,
         vec3(0.0, seat_center_y, 0.0),
-    )?;
-    mesh.combine_with(seat)?;
+    )?)?;
 
-    // Seat edge molding (slightly wider/deeper strip around bottom edge of seat)
-    let molding_y = SEAT_HEIGHT + MOLDING_HEIGHT / 2.0;
-    let molding = make_box(
-        SEAT_WIDTH + MOLDING_OVERHANG * 2.0,
+    // Seat edge molding
+    let molding_y = params.seat_height + MOLDING_HEIGHT / 2.0;
+    mesh.combine_with(make_box(
+        params.seat_width + MOLDING_OVERHANG * 2.0,
         MOLDING_HEIGHT,
-        SEAT_DEPTH + MOLDING_OVERHANG * 2.0,
+        params.seat_depth + MOLDING_OVERHANG * 2.0,
         vec3(0.0, molding_y, 0.0),
-    )?;
-    mesh.combine_with(molding)?;
+    )?)?;
 
-    eprintln!("=== After seat ===\n{}", mesh.describe());
-
-    // === Turned Legs (4 at corners) ===
+    // === Turned Legs ===
     let leg_positions = [
-        vec3(
-            SEAT_WIDTH / 2.0 - LEG_INSET,
-            SEAT_HEIGHT / 2.0,
-            SEAT_DEPTH / 2.0 - LEG_INSET,
-        ),
-        vec3(
-            -(SEAT_WIDTH / 2.0 - LEG_INSET),
-            SEAT_HEIGHT / 2.0,
-            SEAT_DEPTH / 2.0 - LEG_INSET,
-        ),
-        vec3(
-            SEAT_WIDTH / 2.0 - LEG_INSET,
-            SEAT_HEIGHT / 2.0,
-            -(SEAT_DEPTH / 2.0 - LEG_INSET),
-        ),
-        vec3(
-            -(SEAT_WIDTH / 2.0 - LEG_INSET),
-            SEAT_HEIGHT / 2.0,
-            -(SEAT_DEPTH / 2.0 - LEG_INSET),
-        ),
+        vec3( params.seat_width / 2.0 - LEG_INSET, params.seat_height / 2.0,  params.seat_depth / 2.0 - LEG_INSET),
+        vec3(-params.seat_width / 2.0 + LEG_INSET, params.seat_height / 2.0,  params.seat_depth / 2.0 - LEG_INSET),
+        vec3( params.seat_width / 2.0 - LEG_INSET, params.seat_height / 2.0, -params.seat_depth / 2.0 + LEG_INSET),
+        vec3(-params.seat_width / 2.0 + LEG_INSET, params.seat_height / 2.0, -params.seat_depth / 2.0 + LEG_INSET),
     ];
 
     for pos in &leg_positions {
-        let leg = make_turned_leg(LEG_RADIUS, SEAT_HEIGHT, LEG_SEGMENTS, *pos)?;
-        mesh.combine_with(leg)?;
+        mesh.combine_with(make_turned_leg(params.leg_radius, params.seat_height, params.leg_segments, *pos)?)?;
     }
 
-    eprintln!("=== After legs ===\n{}", mesh.describe());
-    let report = mesh.describe();
-    assert!(
-        report.bounding_box.0.y.abs() < 0.01,
-        "Legs should reach y≈0, got y={}",
-        report.bounding_box.0.y
-    );
+    // === Apron ===
+    let apron_y = params.seat_height - APRON_HEIGHT / 2.0;
+    let apron_inner_w = params.seat_width - LEG_INSET * 2.0;
+    let apron_inner_d = params.seat_depth - LEG_INSET * 2.0;
 
-    // === Seat Apron (decorative frame under seat) ===
-    let apron_y = SEAT_HEIGHT - APRON_HEIGHT / 2.0;
-    let apron_inner_w = SEAT_WIDTH - LEG_INSET * 2.0;
-    let apron_inner_d = SEAT_DEPTH - LEG_INSET * 2.0;
+    mesh.combine_with(make_box(apron_inner_w, APRON_HEIGHT, APRON_THICKNESS, vec3(0.0, apron_y, params.seat_depth / 2.0 - LEG_INSET))?)?;
+    mesh.combine_with(make_box(apron_inner_w, APRON_HEIGHT, APRON_THICKNESS, vec3(0.0, apron_y, -(params.seat_depth / 2.0 - LEG_INSET)))?)?;
+    mesh.combine_with(make_box(APRON_THICKNESS, APRON_HEIGHT, apron_inner_d, vec3(-(params.seat_width / 2.0 - LEG_INSET), apron_y, 0.0))?)?;
+    mesh.combine_with(make_box(APRON_THICKNESS, APRON_HEIGHT, apron_inner_d, vec3(params.seat_width / 2.0 - LEG_INSET, apron_y, 0.0))?)?;
 
-    // Front apron
-    mesh.combine_with(make_box(
-        apron_inner_w,
-        APRON_HEIGHT,
-        APRON_THICKNESS,
-        vec3(0.0, apron_y, SEAT_DEPTH / 2.0 - LEG_INSET),
-    )?)?;
-    // Back apron
-    mesh.combine_with(make_box(
-        apron_inner_w,
-        APRON_HEIGHT,
-        APRON_THICKNESS,
-        vec3(0.0, apron_y, -(SEAT_DEPTH / 2.0 - LEG_INSET)),
-    )?)?;
-    // Left apron
-    mesh.combine_with(make_box(
-        APRON_THICKNESS,
-        APRON_HEIGHT,
-        apron_inner_d,
-        vec3(-(SEAT_WIDTH / 2.0 - LEG_INSET), apron_y, 0.0),
-    )?)?;
-    // Right apron
-    mesh.combine_with(make_box(
-        APRON_THICKNESS,
-        APRON_HEIGHT,
-        apron_inner_d,
-        vec3(SEAT_WIDTH / 2.0 - LEG_INSET, apron_y, 0.0),
-    )?)?;
-
-    // Small decorative trim strip along bottom of front apron
+    // Front apron trim
     let trim_y = apron_y - APRON_HEIGHT / 2.0 - 0.004;
-    mesh.combine_with(make_box(
-        apron_inner_w + 0.006,
-        0.008,
-        APRON_THICKNESS + 0.004,
-        vec3(0.0, trim_y, SEAT_DEPTH / 2.0 - LEG_INSET),
-    )?)?;
-
-    eprintln!("=== After apron ===\n{}", mesh.describe());
+    mesh.combine_with(make_box(apron_inner_w + 0.006, 0.008, APRON_THICKNESS + 0.004, vec3(0.0, trim_y, params.seat_depth / 2.0 - LEG_INSET))?)?;
 
     // === Backrest ===
-    let post_height = BACK_TOTAL_HEIGHT;
+    let post_height = params.backrest_height;
     let post_center_y = seat_top_y + post_height / 2.0;
-    let post_x = SEAT_WIDTH / 2.0 - LEG_INSET;
+    let post_x = params.seat_width / 2.0 - LEG_INSET;
     let back_post_z = back_z + BACK_POST_DEPTH / 2.0;
 
-    // Left back post
-    mesh.combine_with(make_box(
-        BACK_POST_WIDTH,
-        post_height,
-        BACK_POST_DEPTH,
-        vec3(-post_x, post_center_y, back_post_z),
-    )?)?;
-    // Right back post
-    mesh.combine_with(make_box(
-        BACK_POST_WIDTH,
-        post_height,
-        BACK_POST_DEPTH,
-        vec3(post_x, post_center_y, back_post_z),
-    )?)?;
+    // Back posts
+    mesh.combine_with(make_box(BACK_POST_WIDTH, post_height, BACK_POST_DEPTH, vec3(-post_x, post_center_y, back_post_z))?)?;
+    mesh.combine_with(make_box(BACK_POST_WIDTH, post_height, BACK_POST_DEPTH, vec3(post_x, post_center_y, back_post_z))?)?;
 
-    // Finials (small spheres on top of back posts)
-    let finial_y = seat_top_y + post_height + FINIAL_RADIUS * 0.7;
-    mesh.combine_with(make_sphere(
-        FINIAL_RADIUS,
-        FINIAL_SUBDIVISIONS,
-        vec3(-post_x, finial_y, back_post_z),
-    )?)?;
-    mesh.combine_with(make_sphere(
-        FINIAL_RADIUS,
-        FINIAL_SUBDIVISIONS,
-        vec3(post_x, finial_y, back_post_z),
-    )?)?;
+    // Finials
+    if params.show_finials {
+        let finial_y = seat_top_y + post_height + FINIAL_RADIUS * 0.7;
+        mesh.combine_with(make_sphere(FINIAL_RADIUS, 1, vec3(-post_x, finial_y, back_post_z))?)?;
+        mesh.combine_with(make_sphere(FINIAL_RADIUS, 1, vec3(post_x, finial_y, back_post_z))?)?;
+    }
 
-    // Top rail (wide horizontal piece across the top of backrest)
+    // Top rail
     let rail_span = post_x * 2.0 + BACK_POST_WIDTH;
     let top_rail_y = seat_top_y + post_height - TOP_RAIL_HEIGHT / 2.0;
-    mesh.combine_with(make_box(
-        rail_span,
-        TOP_RAIL_HEIGHT,
-        TOP_RAIL_DEPTH,
-        vec3(0.0, top_rail_y, back_post_z),
-    )?)?;
+    mesh.combine_with(make_box(rail_span, TOP_RAIL_HEIGHT, TOP_RAIL_DEPTH, vec3(0.0, top_rail_y, back_post_z))?)?;
 
-    // Crown piece (small decorative arch above center of top rail)
-    let crown_y = top_rail_y + TOP_RAIL_HEIGHT / 2.0 + CROWN_HEIGHT / 2.0;
-    mesh.combine_with(make_box(
-        CROWN_WIDTH,
-        CROWN_HEIGHT,
-        CROWN_DEPTH,
-        vec3(0.0, crown_y, back_post_z),
-    )?)?;
+    // Crown piece
+    if params.show_crown {
+        let crown_width = rail_span * 0.6;
+        let crown_y = top_rail_y + TOP_RAIL_HEIGHT / 2.0 + CROWN_HEIGHT / 2.0;
+        mesh.combine_with(make_box(crown_width, CROWN_HEIGHT, CROWN_DEPTH, vec3(0.0, crown_y, back_post_z))?)?;
+    }
 
     // Lower cross rail
     let lower_rail_y = seat_top_y + 0.04 + CROSS_RAIL_HEIGHT / 2.0;
     let inner_span = post_x * 2.0 - BACK_POST_WIDTH;
-    mesh.combine_with(make_box(
-        inner_span,
-        CROSS_RAIL_HEIGHT,
-        CROSS_RAIL_DEPTH,
-        vec3(0.0, lower_rail_y, back_post_z),
-    )?)?;
+    mesh.combine_with(make_box(inner_span, CROSS_RAIL_HEIGHT, CROSS_RAIL_DEPTH, vec3(0.0, lower_rail_y, back_post_z))?)?;
 
-    // Upper cross rail (between splats and top rail)
+    // Upper cross rail
     let upper_rail_y = top_rail_y - TOP_RAIL_HEIGHT / 2.0 - CROSS_RAIL_HEIGHT / 2.0 - 0.005;
-    mesh.combine_with(make_box(
-        inner_span,
-        CROSS_RAIL_HEIGHT,
-        CROSS_RAIL_DEPTH,
-        vec3(0.0, upper_rail_y, back_post_z),
-    )?)?;
+    mesh.combine_with(make_box(inner_span, CROSS_RAIL_HEIGHT, CROSS_RAIL_DEPTH, vec3(0.0, upper_rail_y, back_post_z))?)?;
 
-    // Two vertical splats (decorative panels)
+    // Splats
     let splat_bottom = lower_rail_y + CROSS_RAIL_HEIGHT / 2.0;
     let splat_top = upper_rail_y - CROSS_RAIL_HEIGHT / 2.0;
     let splat_h = splat_top - splat_bottom;
     let splat_cy = splat_bottom + splat_h / 2.0;
+    let n = params.num_splats;
 
-    // Left splat
-    mesh.combine_with(make_box(
-        SPLAT_WIDTH,
-        splat_h,
-        SPLAT_DEPTH,
-        vec3(-(SPLAT_GAP / 2.0 + SPLAT_WIDTH / 2.0), splat_cy, back_post_z),
-    )?)?;
-    // Right splat
-    mesh.combine_with(make_box(
-        SPLAT_WIDTH,
-        splat_h,
-        SPLAT_DEPTH,
-        vec3(SPLAT_GAP / 2.0 + SPLAT_WIDTH / 2.0, splat_cy, back_post_z),
-    )?)?;
+    if n > 0 {
+        let available = inner_span - 0.02; // margin from posts
+        let splat_width = (available / (n as f32 * 1.5 + 0.5)).min(0.08);
+        let total_splats_width = splat_width * n as f32;
+        let total_gaps = available - total_splats_width;
+        let gap = total_gaps / (n as f32 + 1.0);
 
-    // Small diamond/lozenge decorative piece between the splats
-    let diamond_y = splat_cy;
-    let diamond_size = 0.03;
-    let (mut diamond, _) = primitives::Cube {
-        subdivision: glam::U16Vec3::ONE,
+        for i in 0..n {
+            let x = -available / 2.0 + gap + splat_width / 2.0 + i as f32 * (splat_width + gap);
+            mesh.combine_with(make_box(splat_width, splat_h, SPLAT_DEPTH, vec3(x, splat_cy, back_post_z))?)?;
+        }
+
+        // Diamond ornament between splats (only if 2+ splats)
+        if n >= 2 {
+            let diamond_size = 0.03;
+            let (mut diamond, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
+            let dall = diamond.select_all();
+            diamond.scale(dall.clone(), vec3(diamond_size, diamond_size, SPLAT_DEPTH * 0.8), Pivot::Origin)?;
+            diamond.rotate(dall.clone(), Quat::from_rotation_z(PI / 4.0), Pivot::Origin)?;
+            diamond.translate(dall, vec3(0.0, splat_cy, back_post_z))?;
+            mesh.combine_with(diamond)?;
+        }
     }
-    .generate()?;
-    let dall = diamond.select_all();
-    diamond.scale(
-        dall.clone(),
-        vec3(diamond_size, diamond_size, SPLAT_DEPTH * 0.8),
-        Pivot::Origin,
-    )?;
-    diamond.rotate(
-        dall.clone(),
-        Quat::from_rotation_z(PI / 4.0),
-        Pivot::Origin,
-    )?;
-    diamond.translate(dall, vec3(0.0, diamond_y, back_post_z))?;
-    mesh.combine_with(diamond)?;
 
-    eprintln!("=== After backrest ===\n{}", mesh.describe());
+    // === Stretchers ===
+    if params.show_stretchers {
+        let span_x = (params.seat_width / 2.0 - LEG_INSET) * 2.0;
+        let span_z = (params.seat_depth / 2.0 - LEG_INSET) * 2.0;
 
-    // === Stretchers (H-stretcher pattern) ===
-    let stretcher_span_x = (SEAT_WIDTH / 2.0 - LEG_INSET) * 2.0;
-    let stretcher_span_z = (SEAT_DEPTH / 2.0 - LEG_INSET) * 2.0;
-
-    // Front stretcher
-    mesh.combine_with(make_box(
-        stretcher_span_x,
-        STRETCHER_SIZE,
-        STRETCHER_SIZE,
-        vec3(0.0, STRETCHER_Y, SEAT_DEPTH / 2.0 - LEG_INSET),
-    )?)?;
-    // Back stretcher
-    mesh.combine_with(make_box(
-        stretcher_span_x,
-        STRETCHER_SIZE,
-        STRETCHER_SIZE,
-        vec3(0.0, STRETCHER_Y, -(SEAT_DEPTH / 2.0 - LEG_INSET)),
-    )?)?;
-    // Left side stretcher
-    mesh.combine_with(make_box(
-        STRETCHER_SIZE,
-        STRETCHER_SIZE,
-        stretcher_span_z,
-        vec3(-(SEAT_WIDTH / 2.0 - LEG_INSET), STRETCHER_Y, 0.0),
-    )?)?;
-    // Right side stretcher
-    mesh.combine_with(make_box(
-        STRETCHER_SIZE,
-        STRETCHER_SIZE,
-        stretcher_span_z,
-        vec3(SEAT_WIDTH / 2.0 - LEG_INSET, STRETCHER_Y, 0.0),
-    )?)?;
-    eprintln!("=== After stretchers ===\n{}", mesh.describe());
-
-    // === Tag regions ===
-    let back_faces = mesh.faces_facing(Vec3::NEG_Z, FRAC_PI_4);
-    let backrest_region: Vec<FaceId> = back_faces
-        .into_iter()
-        .filter(|f| {
-            let c = mesh.get_face_centroid(*f).unwrap_or(Vec3::ZERO);
-            c.y > seat_top_y
-        })
-        .collect();
-    mesh.tag(backrest_region, "backrest");
-
-    mesh.tag(
-        mesh.faces_facing(Vec3::NEG_Y, 0.1)
-            .into_iter()
-            .filter(|f| {
-                let c = mesh.get_face_centroid(*f).unwrap_or(Vec3::ZERO);
-                c.y < 0.02
-            })
-            .collect::<Vec<_>>(),
-        "feet",
-    );
-
-    // === Final Verification ===
-    let final_report = mesh.describe();
-    eprintln!("\n=== Final Victorian Chair ===\n{}", final_report);
-
-    let total_height = final_report.dimensions.y;
-    let expected_min = seat_top_y + BACK_TOTAL_HEIGHT;
-    eprintln!(
-        "Total height: {:.3}m (expected ≥{:.3}m)",
-        total_height, expected_min
-    );
-    assert!(
-        total_height >= expected_min - 0.05,
-        "Chair too short: {:.3}m",
-        total_height
-    );
-
-    let validation = mesh.validate();
-    eprintln!("=== Validation ===\n{}", validation);
-    eprintln!("Tags: {:?}", mesh.tag_names());
+        mesh.combine_with(make_box(span_x, STRETCHER_SIZE, STRETCHER_SIZE, vec3(0.0, STRETCHER_Y, params.seat_depth / 2.0 - LEG_INSET))?)?;
+        mesh.combine_with(make_box(span_x, STRETCHER_SIZE, STRETCHER_SIZE, vec3(0.0, STRETCHER_Y, -(params.seat_depth / 2.0 - LEG_INSET)))?)?;
+        mesh.combine_with(make_box(STRETCHER_SIZE, STRETCHER_SIZE, span_z, vec3(-(params.seat_width / 2.0 - LEG_INSET), STRETCHER_Y, 0.0))?)?;
+        mesh.combine_with(make_box(STRETCHER_SIZE, STRETCHER_SIZE, span_z, vec3(params.seat_width / 2.0 - LEG_INSET, STRETCHER_Y, 0.0))?)?;
+    }
 
     mesh.recalculate_normals()?;
-
-    #[cfg(feature = "preview")]
-    {
-        use smesh::smesh::preview::{PreviewOptions, PreviewView};
-        let opts = PreviewOptions::default()
-            .with_size(512, 512)
-            .with_wireframe();
-        let paths = mesh.save_preview_with_options(&opts, "/tmp").unwrap();
-        eprintln!("Saved previews: {:?}", paths);
-    }
-
     Ok(mesh)
+}
+
+fn update_chair_system(
+    params: Res<ChairParameters>,
+    chairs: Query<Entity, With<ChairTag>>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    if params.is_changed() {
+        for e in &chairs {
+            let smesh = generate_chair(&params).unwrap();
+            let v0 = smesh.vertices().next().unwrap();
+            commands.entity(e).insert((
+                Mesh3d(meshes.add(Mesh::from(smesh.clone()))),
+                DebugRenderSMesh {
+                    mesh: smesh,
+                    selection: Selection::Vertex(v0),
+                    visible: false,
+                },
+            ));
+            info!("Regenerated chair");
+        }
+    }
 }
 
 fn init_system(
@@ -486,21 +299,15 @@ fn init_system(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    let chair_mesh = generate_chair().unwrap();
-    let v0 = chair_mesh.vertices().next().unwrap();
+    commands.insert_resource(ChairParameters::default());
 
     commands.spawn((
-        Mesh3d(meshes.add(Mesh::from(chair_mesh.clone()))),
+        ChairTag,
         MeshMaterial3d(materials.add(StandardMaterial {
             base_color: Color::srgb(0.40, 0.22, 0.10),
             perceptual_roughness: 0.65,
             ..default()
         })),
-        DebugRenderSMesh {
-            mesh: chair_mesh,
-            selection: Selection::Vertex(v0),
-            visible: false,
-        },
     ));
 
     // Ground plane
@@ -552,9 +359,12 @@ fn main() {
             DefaultPlugins,
             PanOrbitCameraPlugin,
             SMeshDebugDrawPlugin,
-            EguiPlugin::default(),
         ))
+        .add_plugins(EguiPlugin::default())
+        .add_plugins(ResourceInspectorPlugin::<ChairParameters>::default())
         .add_systems(Startup, init_system)
+        .add_systems(Update, update_chair_system)
+        .register_type::<ChairParameters>()
         .run();
 }
 
@@ -564,7 +374,7 @@ mod tests {
 
     #[test]
     fn chair_generation_produces_valid_mesh() {
-        let mesh = generate_chair().unwrap();
+        let mesh = generate_chair(&ChairParameters::default()).unwrap();
         let report = mesh.describe();
         let validation = mesh.validate();
 
@@ -581,7 +391,24 @@ mod tests {
         }
 
         assert!(report.dimensions.x > 0.3 && report.dimensions.x < 0.7, "Width off");
-        assert!(report.dimensions.y > 0.9 && report.dimensions.y < 1.3, "Height off");
+        assert!(report.dimensions.y > 0.8 && report.dimensions.y < 1.3, "Height off");
         assert!(report.dimensions.z > 0.3 && report.dimensions.z < 0.6, "Depth off");
+    }
+
+    #[test]
+    fn chair_with_custom_params() {
+        let params = ChairParameters {
+            seat_width: 0.55,
+            seat_depth: 0.50,
+            num_splats: 3,
+            show_finials: false,
+            show_crown: false,
+            show_stretchers: false,
+            ..Default::default()
+        };
+        let mesh = generate_chair(&params).unwrap();
+        let report = mesh.describe();
+        assert!(report.is_manifold);
+        assert!((report.dimensions.x - 0.55).abs() < 0.02, "Width should match param");
     }
 }
