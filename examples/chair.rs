@@ -279,7 +279,7 @@ fn init_system(
     commands.spawn((
         Camera3d::default(),
         Msaa::Sample4,
-        Transform::from_translation(vec3(1.3, 1.0, 1.5))
+        Transform::from_translation(vec3(1.5, 1.2, 1.7))
             .looking_at(vec3(0.0, 0.5, 0.0), Vec3::Y),
         PanOrbitCamera::default(),
     ));
