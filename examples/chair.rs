@@ -263,6 +263,7 @@ fn update_chair_system(
 fn init_system(
     mut commands: Commands,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    config: Res<ShowcaseConfig>,
 ) {
     commands.insert_resource(ChairParameters::default());
 
@@ -274,6 +275,16 @@ fn init_system(
             ..default()
         })),
     ));
+
+    // Camera with orbit controls
+    let cam_offset = Vec3::new(0.5, 0.4, 0.7) * config.camera_distance;
+    commands.spawn((
+        Camera3d::default(),
+        Msaa::Sample4,
+        Transform::from_translation(config.look_at + cam_offset)
+            .looking_at(config.look_at, Vec3::Y),
+        PanOrbitCamera::default(),
+    ));
 }
 
 fn main() {
@@ -284,16 +295,10 @@ fn main() {
         })
         .add_plugins((DefaultPlugins, ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
         .add_plugins(ResourceInspectorPlugin::<ChairParameters>::default())
-        .add_systems(Startup, (init_system, add_orbit_camera))
+        .add_systems(Startup, init_system)
         .add_systems(Update, update_chair_system)
         .register_type::<ChairParameters>()
         .run();
-}
-
-fn add_orbit_camera(mut commands: Commands, cameras: Query<Entity, With<Camera3d>>) {
-    for entity in &cameras {
-        commands.entity(entity).insert(PanOrbitCamera::default());
-    }
 }
 
 #[cfg(test)]

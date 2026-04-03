@@ -438,7 +438,6 @@ fn showcase_setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    config: Res<ShowcaseConfig>,
 ) {
     use std::f32::consts::PI;
 
@@ -487,12 +486,4 @@ fn showcase_setup(
         Transform::from_translation(Vec3::new(-1.0, 1.5, -2.0)),
     ));
 
-    // Camera — examples can add PanOrbitCamera or other controllers on top
-    let cam_offset = Vec3::new(0.5, 0.4, 0.7) * config.camera_distance;
-    commands.spawn((
-        Camera3d::default(),
-        Msaa::Sample4,
-        Transform::from_translation(config.look_at + cam_offset)
-            .looking_at(config.look_at, Vec3::Y),
-    ));
 }
