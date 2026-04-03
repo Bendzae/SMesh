@@ -178,7 +178,11 @@ fn generate_chair() -> SMeshResult<SMesh> {
     // Render preview images for visual verification
     #[cfg(feature = "preview")]
     {
-        let paths = mesh.save_previews(512, 512, "/tmp").unwrap();
+        use smesh::smesh::preview::{PreviewOptions, PreviewView};
+        let opts = PreviewOptions::default()
+            .with_size(512, 512)
+            .with_wireframe();
+        let paths = mesh.save_preview_with_options(&opts, "/tmp").unwrap();
         eprintln!("Saved previews: {:?}", paths);
     }
 
