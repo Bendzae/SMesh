@@ -2,14 +2,14 @@ use std::f32::consts::PI;
 
 use bevy::prelude::*;
 use bevy_inspector_egui::{
-    bevy_egui::EguiPlugin,
     inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
 };
-use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
+    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseConfig, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -57,13 +57,12 @@ impl Default for ChairParameters {
 #[derive(Component)]
 struct ChairTag;
 
-// === Derived dimensions (proportional to parameters) ===
-
+// === Fixed proportional constants ===
 const SEAT_THICKNESS: f32 = 0.035;
 const MOLDING_OVERHANG: f32 = 0.008;
 const MOLDING_HEIGHT: f32 = 0.012;
 const LEG_INSET: f32 = 0.04;
-const LEG_BULGE_SCALE: f32 = 1.5; // bulge radius = leg_radius * this
+const LEG_BULGE_SCALE: f32 = 1.5;
 const LEG_BULGE_HEIGHT: f32 = 0.025;
 const APRON_HEIGHT: f32 = 0.055;
 const APRON_THICKNESS: f32 = 0.018;
@@ -80,32 +79,21 @@ const CROSS_RAIL_DEPTH: f32 = 0.022;
 const STRETCHER_SIZE: f32 = 0.018;
 const STRETCHER_Y: f32 = 0.09;
 
-/// Helper: create a box with given dimensions centered at a position.
 fn make_box(width: f32, height: f32, depth: f32, position: Vec3) -> SMeshResult<SMesh> {
-    let (mut part, _) = primitives::Cube {
-        subdivision: glam::U16Vec3::ONE,
-    }
-    .generate()?;
+    let (mut part, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = part.select_all();
     part.scale(all.clone(), vec3(width, height, depth), Pivot::Origin)?;
     part.translate(all, position)?;
     Ok(part)
 }
 
-/// Helper: create a cylinder at a position.
 fn make_cylinder(radius: f32, height: f32, segments: usize, position: Vec3) -> SMeshResult<SMesh> {
-    let (mut cyl, _) = primitives::Cylinder {
-        segments,
-        height,
-        radius,
-    }
-    .generate()?;
+    let (mut cyl, _) = primitives::Cylinder { segments, height, radius }.generate()?;
     let all = cyl.select_all();
     cyl.translate(all, position)?;
     Ok(cyl)
 }
 
-/// Helper: create a sphere at a position.
 fn make_sphere(radius: f32, subdivisions: usize, position: Vec3) -> SMeshResult<SMesh> {
     let (mut sphere, _) = primitives::Icosphere { subdivisions }.generate()?;
     let all = sphere.select_all();
@@ -114,25 +102,20 @@ fn make_sphere(radius: f32, subdivisions: usize, position: Vec3) -> SMeshResult<
     Ok(sphere)
 }
 
-/// Build a turned leg with decorative bulge rings.
 fn make_turned_leg(radius: f32, height: f32, segments: usize, position: Vec3) -> SMeshResult<SMesh> {
     let mut leg = SMesh::new();
     let bulge_r = radius * LEG_BULGE_SCALE;
 
     leg.combine_with(make_cylinder(radius, height, segments, position)?)?;
 
-    // Upper bulge
     let upper_y = position.y + height / 2.0 - height * 0.15;
     leg.combine_with(make_cylinder(bulge_r, LEG_BULGE_HEIGHT, segments, vec3(position.x, upper_y, position.z))?)?;
 
-    // Middle bulge
     leg.combine_with(make_cylinder(bulge_r * 0.85, LEG_BULGE_HEIGHT * 0.8, segments, vec3(position.x, position.y, position.z))?)?;
 
-    // Lower bulge
     let lower_y = position.y - height / 2.0 + height * 0.12;
     leg.combine_with(make_cylinder(bulge_r * 0.75, LEG_BULGE_HEIGHT * 0.7, segments, vec3(position.x, lower_y, position.z))?)?;
 
-    // Foot pad
     let foot_y = position.y - height / 2.0 + 0.005;
     leg.combine_with(make_cylinder(radius * 1.4, 0.01, segments, vec3(position.x, foot_y, position.z))?)?;
 
@@ -146,38 +129,31 @@ fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
     let seat_center_y = params.seat_height + SEAT_THICKNESS * 0.5;
     let back_z = -params.seat_depth / 2.0;
 
-    // === Seat ===
-    mesh.combine_with(make_box(
-        params.seat_width, SEAT_THICKNESS, params.seat_depth,
-        vec3(0.0, seat_center_y, 0.0),
-    )?)?;
+    // Seat
+    mesh.combine_with(make_box(params.seat_width, SEAT_THICKNESS, params.seat_depth, vec3(0.0, seat_center_y, 0.0))?)?;
 
     // Seat edge molding
     let molding_y = params.seat_height + MOLDING_HEIGHT / 2.0;
     mesh.combine_with(make_box(
-        params.seat_width + MOLDING_OVERHANG * 2.0,
-        MOLDING_HEIGHT,
-        params.seat_depth + MOLDING_OVERHANG * 2.0,
+        params.seat_width + MOLDING_OVERHANG * 2.0, MOLDING_HEIGHT, params.seat_depth + MOLDING_OVERHANG * 2.0,
         vec3(0.0, molding_y, 0.0),
     )?)?;
 
-    // === Turned Legs ===
+    // Turned legs
     let leg_positions = [
         vec3( params.seat_width / 2.0 - LEG_INSET, params.seat_height / 2.0,  params.seat_depth / 2.0 - LEG_INSET),
         vec3(-params.seat_width / 2.0 + LEG_INSET, params.seat_height / 2.0,  params.seat_depth / 2.0 - LEG_INSET),
         vec3( params.seat_width / 2.0 - LEG_INSET, params.seat_height / 2.0, -params.seat_depth / 2.0 + LEG_INSET),
         vec3(-params.seat_width / 2.0 + LEG_INSET, params.seat_height / 2.0, -params.seat_depth / 2.0 + LEG_INSET),
     ];
-
     for pos in &leg_positions {
         mesh.combine_with(make_turned_leg(params.leg_radius, params.seat_height, params.leg_segments, *pos)?)?;
     }
 
-    // === Apron ===
+    // Apron
     let apron_y = params.seat_height - APRON_HEIGHT / 2.0;
     let apron_inner_w = params.seat_width - LEG_INSET * 2.0;
     let apron_inner_d = params.seat_depth - LEG_INSET * 2.0;
-
     mesh.combine_with(make_box(apron_inner_w, APRON_HEIGHT, APRON_THICKNESS, vec3(0.0, apron_y, params.seat_depth / 2.0 - LEG_INSET))?)?;
     mesh.combine_with(make_box(apron_inner_w, APRON_HEIGHT, APRON_THICKNESS, vec3(0.0, apron_y, -(params.seat_depth / 2.0 - LEG_INSET)))?)?;
     mesh.combine_with(make_box(APRON_THICKNESS, APRON_HEIGHT, apron_inner_d, vec3(-(params.seat_width / 2.0 - LEG_INSET), apron_y, 0.0))?)?;
@@ -187,13 +163,11 @@ fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
     let trim_y = apron_y - APRON_HEIGHT / 2.0 - 0.004;
     mesh.combine_with(make_box(apron_inner_w + 0.006, 0.008, APRON_THICKNESS + 0.004, vec3(0.0, trim_y, params.seat_depth / 2.0 - LEG_INSET))?)?;
 
-    // === Backrest ===
+    // Backrest posts
     let post_height = params.backrest_height;
     let post_center_y = seat_top_y + post_height / 2.0;
     let post_x = params.seat_width / 2.0 - LEG_INSET;
     let back_post_z = back_z + BACK_POST_DEPTH / 2.0;
-
-    // Back posts
     mesh.combine_with(make_box(BACK_POST_WIDTH, post_height, BACK_POST_DEPTH, vec3(-post_x, post_center_y, back_post_z))?)?;
     mesh.combine_with(make_box(BACK_POST_WIDTH, post_height, BACK_POST_DEPTH, vec3(post_x, post_center_y, back_post_z))?)?;
 
@@ -216,12 +190,10 @@ fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
         mesh.combine_with(make_box(crown_width, CROWN_HEIGHT, CROWN_DEPTH, vec3(0.0, crown_y, back_post_z))?)?;
     }
 
-    // Lower cross rail
+    // Cross rails
     let lower_rail_y = seat_top_y + 0.04 + CROSS_RAIL_HEIGHT / 2.0;
     let inner_span = post_x * 2.0 - BACK_POST_WIDTH;
     mesh.combine_with(make_box(inner_span, CROSS_RAIL_HEIGHT, CROSS_RAIL_DEPTH, vec3(0.0, lower_rail_y, back_post_z))?)?;
-
-    // Upper cross rail
     let upper_rail_y = top_rail_y - TOP_RAIL_HEIGHT / 2.0 - CROSS_RAIL_HEIGHT / 2.0 - 0.005;
     mesh.combine_with(make_box(inner_span, CROSS_RAIL_HEIGHT, CROSS_RAIL_DEPTH, vec3(0.0, upper_rail_y, back_post_z))?)?;
 
@@ -231,20 +203,16 @@ fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
     let splat_h = splat_top - splat_bottom;
     let splat_cy = splat_bottom + splat_h / 2.0;
     let n = params.num_splats;
-
     if n > 0 {
-        let available = inner_span - 0.02; // margin from posts
+        let available = inner_span - 0.02;
         let splat_width = (available / (n as f32 * 1.5 + 0.5)).min(0.08);
         let total_splats_width = splat_width * n as f32;
         let total_gaps = available - total_splats_width;
         let gap = total_gaps / (n as f32 + 1.0);
-
         for i in 0..n {
             let x = -available / 2.0 + gap + splat_width / 2.0 + i as f32 * (splat_width + gap);
             mesh.combine_with(make_box(splat_width, splat_h, SPLAT_DEPTH, vec3(x, splat_cy, back_post_z))?)?;
         }
-
-        // Diamond ornament between splats (only if 2+ splats)
         if n >= 2 {
             let diamond_size = 0.03;
             let (mut diamond, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
@@ -256,11 +224,10 @@ fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
         }
     }
 
-    // === Stretchers ===
+    // Stretchers
     if params.show_stretchers {
         let span_x = (params.seat_width / 2.0 - LEG_INSET) * 2.0;
         let span_z = (params.seat_depth / 2.0 - LEG_INSET) * 2.0;
-
         mesh.combine_with(make_box(span_x, STRETCHER_SIZE, STRETCHER_SIZE, vec3(0.0, STRETCHER_Y, params.seat_depth / 2.0 - LEG_INSET))?)?;
         mesh.combine_with(make_box(span_x, STRETCHER_SIZE, STRETCHER_SIZE, vec3(0.0, STRETCHER_Y, -(params.seat_depth / 2.0 - LEG_INSET)))?)?;
         mesh.combine_with(make_box(STRETCHER_SIZE, STRETCHER_SIZE, span_z, vec3(-(params.seat_width / 2.0 - LEG_INSET), STRETCHER_Y, 0.0))?)?;
@@ -289,14 +256,12 @@ fn update_chair_system(
                     visible: false,
                 },
             ));
-            info!("Regenerated chair");
         }
     }
 }
 
 fn init_system(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     commands.insert_resource(ChairParameters::default());
@@ -309,80 +274,26 @@ fn init_system(
             ..default()
         })),
     ));
-
-    // Ground plane — dark wood floor
-    commands.spawn((
-        Mesh3d(meshes.add(Plane3d::default())),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.18, 0.12, 0.08),
-            perceptual_roughness: 0.85,
-            reflectance: 0.3,
-            ..default()
-        })),
-        Transform::from_scale(Vec3::splat(10.0)),
-    ));
-
-    // Key light — warm directional from upper-left, casting shadows
-    commands.spawn((
-        DirectionalLight {
-            illuminance: light_consts::lux::OVERCAST_DAY * 1.5,
-            shadows_enabled: true,
-            color: Color::srgb(1.0, 0.95, 0.85),
-            ..default()
-        },
-        Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, PI / 4.0, -PI / 3.5)),
-    ));
-
-    // Fill light — cooler point light from the right side
-    commands.spawn((
-        PointLight {
-            intensity: 150_000.0,
-            color: Color::srgb(0.85, 0.9, 1.0),
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_translation(vec3(2.5, 2.0, 1.5)),
-    ));
-
-    // Rim/back light — warm accent from behind to highlight edges
-    commands.spawn((
-        PointLight {
-            intensity: 100_000.0,
-            color: Color::srgb(1.0, 0.85, 0.6),
-            shadows_enabled: false,
-            ..default()
-        },
-        Transform::from_translation(vec3(-1.0, 1.5, -2.0)),
-    ));
-
-    commands.spawn((
-        Camera3d::default(),
-        Msaa::Sample4,
-        Transform::from_translation(vec3(0.7, 0.7, 1.0))
-            .looking_at(vec3(0.0, 0.4, -0.05), Vec3::Y),
-        PanOrbitCamera::default(),
-    ));
 }
 
 fn main() {
     App::new()
-        .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(AmbientLight {
-            color: Color::srgb(0.95, 0.90, 0.80),
-            brightness: 150.0,
-            affects_lightmapped_meshes: true,
+        .insert_resource(ShowcaseConfig {
+            look_at: Vec3::new(0.0, 0.4, -0.05),
+            camera_distance: 2.5,
         })
-        .add_plugins((
-            DefaultPlugins,
-            PanOrbitCameraPlugin,
-            SMeshDebugDrawPlugin,
-        ))
-        .add_plugins(EguiPlugin::default())
+        .add_plugins((DefaultPlugins, ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
         .add_plugins(ResourceInspectorPlugin::<ChairParameters>::default())
-        .add_systems(Startup, init_system)
+        .add_systems(Startup, (init_system, add_orbit_camera))
         .add_systems(Update, update_chair_system)
         .register_type::<ChairParameters>()
         .run();
+}
+
+fn add_orbit_camera(mut commands: Commands, cameras: Query<Entity, With<Camera3d>>) {
+    for entity in &cameras {
+        commands.entity(entity).insert(PanOrbitCamera::default());
+    }
 }
 
 #[cfg(test)]

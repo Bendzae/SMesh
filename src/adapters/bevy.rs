@@ -371,3 +371,128 @@ fn update_ui_system(
             });
     }
 }
+
+// === Showcase Plugin ===
+
+/// Configuration for the showcase scene setup.
+#[derive(Resource, Clone)]
+pub struct ShowcaseConfig {
+    /// Where the camera looks at. Defaults to mesh center.
+    pub look_at: Vec3,
+    /// Camera distance multiplier. The camera is placed at `distance * bounding_radius`
+    /// from the look_at point. Default: 2.5.
+    pub camera_distance: f32,
+}
+
+impl Default for ShowcaseConfig {
+    fn default() -> Self {
+        Self {
+            look_at: Vec3::new(0.0, 0.4, 0.0),
+            camera_distance: 2.5,
+        }
+    }
+}
+
+/// Plugin that sets up a reusable showcase scene for displaying meshes.
+///
+/// Provides:
+/// - Dark background
+/// - Warm ambient light
+/// - Three-point lighting (key, fill, rim)
+/// - Dark wood ground plane
+/// - Camera positioned based on [`ShowcaseConfig`]
+/// - `SMeshDebugDrawPlugin`
+///
+/// Insert a [`ShowcaseConfig`] resource before adding this plugin to customize
+/// camera framing. If not inserted, defaults are used.
+///
+/// # Example
+/// ```ignore
+/// App::new()
+///     .add_plugins((DefaultPlugins, ShowcasePlugin))
+///     .add_systems(Startup, |mut commands: Commands, ...| {
+///         commands.spawn((
+///             Mesh3d(mesh_handle),
+///             MeshMaterial3d(material_handle),
+///         ));
+///     })
+///     .run();
+/// ```
+pub struct ShowcasePlugin;
+
+impl Plugin for ShowcasePlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(ClearColor(Color::BLACK))
+            .insert_resource(AmbientLight {
+                color: Color::srgb(0.95, 0.90, 0.80),
+                brightness: 150.0,
+                affects_lightmapped_meshes: true,
+            })
+            .init_resource::<ShowcaseConfig>()
+            .add_plugins(SMeshDebugDrawPlugin)
+            .add_systems(Startup, showcase_setup);
+    }
+}
+
+fn showcase_setup(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    config: Res<ShowcaseConfig>,
+) {
+    use std::f32::consts::PI;
+
+    // Ground plane
+    commands.spawn((
+        Mesh3d(meshes.add(Plane3d::default())),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.18, 0.12, 0.08),
+            perceptual_roughness: 0.85,
+            reflectance: 0.3,
+            ..default()
+        })),
+        Transform::from_scale(Vec3::splat(10.0)),
+    ));
+
+    // Key light — warm directional from upper-left
+    commands.spawn((
+        DirectionalLight {
+            illuminance: light_consts::lux::OVERCAST_DAY * 1.5,
+            shadows_enabled: true,
+            color: Color::srgb(1.0, 0.95, 0.85),
+            ..default()
+        },
+        Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, PI / 4.0, -PI / 3.5)),
+    ));
+
+    // Fill light — cooler point light from the right
+    commands.spawn((
+        PointLight {
+            intensity: 150_000.0,
+            color: Color::srgb(0.85, 0.9, 1.0),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(2.5, 2.0, 1.5)),
+    ));
+
+    // Rim light — warm accent from behind
+    commands.spawn((
+        PointLight {
+            intensity: 100_000.0,
+            color: Color::srgb(1.0, 0.85, 0.6),
+            shadows_enabled: false,
+            ..default()
+        },
+        Transform::from_translation(Vec3::new(-1.0, 1.5, -2.0)),
+    ));
+
+    // Camera — examples can add PanOrbitCamera or other controllers on top
+    let cam_offset = Vec3::new(0.5, 0.4, 0.7) * config.camera_distance;
+    commands.spawn((
+        Camera3d::default(),
+        Msaa::Sample4,
+        Transform::from_translation(config.look_at + cam_offset)
+            .looking_at(config.look_at, Vec3::Y),
+    ));
+}
