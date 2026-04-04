@@ -451,7 +451,97 @@ impl Primitive<CircleData> for Circle {
 
 #[cfg(test)]
 mod tests {
+    use glam::Vec3;
+
     use super::*;
+
+    #[test]
+    fn test_wedge_basic() {
+        let (mesh, data) = Wedge {
+            width: 2.0,
+            height: 1.5,
+            depth: 3.0,
+        }
+        .generate()
+        .unwrap();
+
+        assert_eq!(mesh.vertices().len(), 6);
+        assert_eq!(mesh.faces().len(), 5); // 2 tris + 3 quads
+        // Front and back are triangles
+        assert_eq!(data.front_face.valence(&mesh), 3);
+        assert_eq!(data.back_face.valence(&mesh), 3);
+    }
+
+    #[test]
+    fn test_wedge_dimensions() {
+        let (mesh, _) = Wedge {
+            width: 4.0,
+            height: 2.0,
+            depth: 6.0,
+        }
+        .generate()
+        .unwrap();
+
+        let mut min = Vec3::splat(f32::MAX);
+        let mut max = Vec3::splat(f32::MIN);
+        for v in mesh.vertices() {
+            let pos = v.position(&mesh).unwrap();
+            min = min.min(pos);
+            max = max.max(pos);
+        }
+        let size = max - min;
+        assert!((size.x - 4.0).abs() < 1e-5);
+        assert!((size.y - 2.0).abs() < 1e-5);
+        assert!((size.z - 6.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_wedge_normals_outward() {
+        let (mesh, _) = Wedge {
+            width: 2.0,
+            height: 1.0,
+            depth: 2.0,
+        }
+        .generate()
+        .unwrap();
+
+        // Compute mesh centroid
+        let mut centroid = Vec3::ZERO;
+        let count = mesh.vertices().len();
+        for v in mesh.vertices() {
+            centroid += v.position(&mesh).unwrap();
+        }
+        centroid /= count as f32;
+
+        // Each face normal should point away from centroid
+        for face in mesh.faces() {
+            let face_centroid = mesh.get_face_centroid(face).unwrap();
+            let normal = mesh.face_normals.as_ref().unwrap().get(face).unwrap();
+            let to_face = (face_centroid - centroid).normalize();
+            assert!(
+                normal.dot(to_face) > 0.0,
+                "Face normal should point away from mesh centroid"
+            );
+        }
+    }
+
+    #[test]
+    fn test_wedge_zero_dimensions() {
+        assert!(Wedge {
+            width: 0.0,
+            height: 1.0,
+            depth: 1.0,
+        }
+        .generate()
+        .is_err());
+        assert!(Wedge {
+            width: 1.0,
+            height: -1.0,
+            depth: 1.0,
+        }
+        .generate()
+        .is_err());
+    }
 
     #[test]
     fn test_cube_has_uvs() {
@@ -514,6 +604,54 @@ mod tests {
             uv_count > 0,
             "Subdivided cube should have UV coordinates on some halfedges"
         );
+    }
+}
+
+pub struct Wedge {
+    pub width: f32,
+    pub height: f32,
+    pub depth: f32,
+}
+
+pub struct WedgeData {
+    pub front_face: FaceId,
+    pub back_face: FaceId,
+}
+
+impl Primitive<WedgeData> for Wedge {
+    fn generate(self) -> SMeshResult<(SMesh, WedgeData)> {
+        if self.width <= 0.0 || self.height <= 0.0 || self.depth <= 0.0 {
+            bail!("Wedge dimensions must be positive.");
+        }
+
+        let mut smesh = SMesh::new();
+        let w = self.width / 2.0;
+        let h = self.height;
+        let d = self.depth / 2.0;
+
+        // Front triangle vertices (z = +d)
+        let v0 = smesh.add_vertex(vec3(-w, 0.0, d));
+        let v1 = smesh.add_vertex(vec3(w, 0.0, d));
+        let v2 = smesh.add_vertex(vec3(0.0, h, d));
+
+        // Back triangle vertices (z = -d)
+        let v3 = smesh.add_vertex(vec3(-w, 0.0, -d));
+        let v4 = smesh.add_vertex(vec3(w, 0.0, -d));
+        let v5 = smesh.add_vertex(vec3(0.0, h, -d));
+
+        // Front triangle
+        let front_face = smesh.make_face(vec![v0, v1, v2])?;
+        // Back triangle (reversed winding)
+        let back_face = smesh.make_face(vec![v3, v5, v4])?;
+        // Bottom quad
+        smesh.make_face(vec![v0, v3, v4, v1])?;
+        // Left slope quad
+        smesh.make_face(vec![v0, v2, v5, v3])?;
+        // Right slope quad
+        smesh.make_face(vec![v1, v4, v5, v2])?;
+
+        smesh.recalculate_normals()?;
+        Ok((smesh, WedgeData { front_face, back_face }))
     }
 }
 

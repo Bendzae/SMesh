@@ -26,6 +26,19 @@ impl SMesh {
         verts.into()
     }
 
+    /// Select all vertices whose position satisfies the given predicate.
+    pub fn vertices_where<F: Fn(Vec3) -> bool>(&self, predicate: F) -> MeshSelection {
+        let verts: Vec<VertexId> = self
+            .vertices()
+            .filter(|v| {
+                v.position(self)
+                    .map(|p| predicate(p))
+                    .unwrap_or(false)
+            })
+            .collect();
+        verts.into()
+    }
+
     /// Find the closest vertex to a point.
     pub fn nearest_vertex(&self, point: Vec3) -> Option<(VertexId, f32)> {
         let mut best: Option<(VertexId, f32)> = None;
@@ -162,6 +175,7 @@ mod tests {
     use glam::vec3;
 
     use super::*;
+    use crate::smesh::primitives::{Cube, Primitive};
 
     fn make_quad_mesh() -> (SMesh, VertexId, VertexId, VertexId, VertexId, FaceId) {
         let mut mesh = SMesh::new();
@@ -172,6 +186,58 @@ mod tests {
         let v3 = mesh.add_vertex(vec3(1.0, 0.0, -1.0));
         let f = mesh.make_quad(v0, v1, v2, v3).unwrap();
         (mesh, v0, v1, v2, v3, f)
+    }
+
+    #[test]
+    fn test_vertices_where_above_y() {
+        let (mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()
+        .unwrap();
+        let sel = mesh.vertices_where(|pos| pos.y > 0.0);
+        let verts = sel.resolve_to_vertices(&mesh).unwrap();
+        assert_eq!(verts.len(), 4);
+    }
+
+    #[test]
+    fn test_vertices_where_all() {
+        let (mesh, _, _, _, _, _) = make_quad_mesh();
+        let sel = mesh.vertices_where(|_| true);
+        let verts = sel.resolve_to_vertices(&mesh).unwrap();
+        assert_eq!(verts.len(), 4);
+    }
+
+    #[test]
+    fn test_vertices_where_none() {
+        let (mesh, _, _, _, _, _) = make_quad_mesh();
+        let sel = mesh.vertices_where(|_| false);
+        let verts = sel.resolve_to_vertices(&mesh).unwrap();
+        assert_eq!(verts.len(), 0);
+    }
+
+    #[test]
+    fn test_vertices_where_with_transform() -> SMeshResult<()> {
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        let sel = mesh.vertices_where(|pos| pos.y > 0.0);
+        let top_verts: Vec<VertexId> = sel.resolve_to_vertices(&mesh)?.into_iter().collect();
+
+        // Move top vertices up
+        for &v in &top_verts {
+            let pos = v.position(&mesh)?;
+            mesh.positions.insert(v, pos + vec3(0.0, 1.0, 0.0));
+        }
+
+        // Verify positions changed
+        for &v in &top_verts {
+            let pos = v.position(&mesh)?;
+            assert!(pos.y > 1.0, "Top vertex should have been moved up");
+        }
+        Ok(())
     }
 
     #[test]

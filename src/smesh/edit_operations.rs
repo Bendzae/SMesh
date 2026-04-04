@@ -419,6 +419,322 @@ impl SMesh {
         Ok(selection)
     }
 
+    /// Perform a loop cut along an edge loop, splitting faces at parameter `t` (0..1).
+    ///
+    /// Starting from `start_edge`, traces across quad faces by following
+    /// opposite edges (next.next in a quad). Splits each crossed edge and
+    /// reconnects the resulting faces into two quads each.
+    ///
+    /// Returns a `MeshSelection` containing the new edge loop vertices and halfedges.
+    pub fn loop_cut(&mut self, start_edge: HalfedgeId, t: f32) -> SMeshResult<MeshSelection> {
+        let t = t.clamp(0.001, 0.999);
+
+        // Phase 1: Trace the edge loop
+        // Collect pairs of (halfedge_to_split, face_it_belongs_to)
+        let mut loop_edges: Vec<HalfedgeId> = vec![];
+        let mut visited_faces: HashSet<FaceId> = HashSet::new();
+
+        let mut current = start_edge;
+        loop {
+            loop_edges.push(current);
+
+            // Get the face of this halfedge
+            let face = match current.face().run(self) {
+                Ok(f) => f,
+                Err(_) => break, // Boundary - open loop
+            };
+
+            if !visited_faces.insert(face) {
+                // Already visited this face - closed loop, remove the duplicate
+                loop_edges.pop();
+                break;
+            }
+
+            // Check it's a quad
+            if face.valence(self) != 4 {
+                break; // Stop at non-quad
+            }
+
+            // The "across" edge in a quad: next.next
+            let across = current.next().next().run(self)?;
+
+            // Cross to adjacent face via opposite
+            let opposite = across.opposite().run(self)?;
+
+            if opposite.is_boundary(self) {
+                // Include the boundary edge but stop
+                loop_edges.push(across);
+                break;
+            }
+
+            current = opposite;
+        }
+
+        if loop_edges.is_empty() {
+            bail!("No edges to cut");
+        }
+
+        // Phase 2: Split each edge and record new vertices
+        // We need to track: for each original halfedge, the new vertex inserted
+        let mut split_vertices: Vec<VertexId> = Vec::new();
+        let mut split_done: HashSet<HalfedgeId> = HashSet::new();
+
+        for &he in &loop_edges {
+            if split_done.contains(&he) {
+                continue;
+            }
+            let src_pos = he.src_vert().position(self)?;
+            let dst_pos = he.dst_vert().position(self)?;
+            let new_pos = src_pos.lerp(dst_pos, t);
+            let new_v = self.add_vertex(new_pos);
+            self.insert_vertex(he, new_v)?;
+            split_vertices.push(new_v);
+
+            // Mark both halfedge and its opposite as done
+            if let Ok(opp) = he.opposite().run(self) {
+                split_done.insert(opp);
+            }
+            split_done.insert(he);
+        }
+
+        // Phase 3: Connect new vertices across each affected face
+        // Each face that was in the loop now has 5+ edges (two of its edges were split).
+        // We need to split each such face by connecting the two new vertices.
+        let mut selection = MeshSelection::new();
+        for v in &split_vertices {
+            selection.insert(*v);
+        }
+
+        for &face in &visited_faces {
+            // Check the face still exists (it should)
+            if self.faces().find(|&f| f == face).is_none() {
+                continue;
+            }
+
+            // Find which of our new split vertices are on this face
+            let face_verts: Vec<VertexId> = face.vertices(self).collect();
+            let mut new_verts_on_face: Vec<(usize, VertexId)> = Vec::new();
+            for (i, &fv) in face_verts.iter().enumerate() {
+                if split_vertices.contains(&fv) {
+                    new_verts_on_face.push((i, fv));
+                }
+            }
+
+            if new_verts_on_face.len() != 2 {
+                continue; // Can't split this face properly
+            }
+
+            let (idx0, v_new0) = new_verts_on_face[0];
+            let (idx1, v_new1) = new_verts_on_face[1];
+
+            // Split the face: delete old face, create two new faces
+            // Face vertices are ordered. We split at idx0 and idx1.
+            let n = face_verts.len();
+            let mut face_a_verts = Vec::new();
+            let mut face_b_verts = Vec::new();
+
+            // Walk from idx0 to idx1 (inclusive) for face A
+            let mut i = idx0;
+            loop {
+                face_a_verts.push(face_verts[i]);
+                if i == idx1 {
+                    break;
+                }
+                i = (i + 1) % n;
+            }
+
+            // Walk from idx1 to idx0 (inclusive) for face B
+            i = idx1;
+            loop {
+                face_b_verts.push(face_verts[i]);
+                if i == idx0 {
+                    break;
+                }
+                i = (i + 1) % n;
+            }
+
+            if face_a_verts.len() < 3 || face_b_verts.len() < 3 {
+                continue;
+            }
+
+            self.delete_only_face(face)?;
+            let fa = self.make_face(face_a_verts)?;
+            let fb = self.make_face(face_b_verts)?;
+            selection.insert(fa);
+            selection.insert(fb);
+
+            // Add the connecting edge to selection
+            if let Ok(he) = v_new0.halfedge_to(v_new1).run(self) {
+                selection.insert(he);
+            }
+        }
+
+        Ok(selection)
+    }
+
+    /// Merge nearby vertices that are within `threshold` distance of each other.
+    ///
+    /// Uses union-find to handle transitive merges (A near B, B near C → all merge).
+    /// For each cluster, picks one representative and reroutes all halfedges.
+    /// Cleans up degenerate edges and faces after merging.
+    ///
+    /// Returns the number of vertex merges performed.
+    pub fn weld_vertices(&mut self, threshold: f32) -> SMeshResult<usize> {
+        let threshold_sq = threshold * threshold;
+        let verts: Vec<VertexId> = self.vertices().collect();
+        let n = verts.len();
+
+        if n == 0 {
+            return Ok(0);
+        }
+
+        // Union-Find
+        let mut parent: HashMap<VertexId, VertexId> = HashMap::new();
+        for &v in &verts {
+            parent.insert(v, v);
+        }
+
+        fn find(parent: &mut HashMap<VertexId, VertexId>, v: VertexId) -> VertexId {
+            let p = parent[&v];
+            if p == v {
+                return v;
+            }
+            let root = find(parent, p);
+            parent.insert(v, root);
+            root
+        }
+
+        fn union(parent: &mut HashMap<VertexId, VertexId>, a: VertexId, b: VertexId) {
+            let ra = find(parent, a);
+            let rb = find(parent, b);
+            if ra != rb {
+                parent.insert(rb, ra);
+            }
+        }
+
+        // Phase 1: Find merge candidates (O(n²))
+        for i in 0..n {
+            let pos_i = verts[i].position(self)?;
+            for j in (i + 1)..n {
+                let pos_j = verts[j].position(self)?;
+                if (pos_i - pos_j).length_squared() <= threshold_sq {
+                    union(&mut parent, verts[i], verts[j]);
+                }
+            }
+        }
+
+        // Phase 2: Build clusters
+        let mut clusters: HashMap<VertexId, Vec<VertexId>> = HashMap::new();
+        for &v in &verts {
+            let root = find(&mut parent, v);
+            clusters.entry(root).or_default().push(v);
+        }
+
+        // Filter to only clusters with more than one vertex
+        let merge_clusters: Vec<(VertexId, Vec<VertexId>)> = clusters
+            .into_iter()
+            .filter(|(_, members)| members.len() > 1)
+            .collect();
+
+        if merge_clusters.is_empty() {
+            return Ok(0);
+        }
+
+        let mut total_merges = 0;
+
+        // Phase 3: For each cluster, compute average position and reroute
+        for (rep, members) in &merge_clusters {
+            // Compute average position
+            let mut avg_pos = glam::Vec3::ZERO;
+            for &v in members {
+                avg_pos += v.position(self)?;
+            }
+            avg_pos /= members.len() as f32;
+            self.positions.insert(*rep, avg_pos);
+
+            // Reroute all non-representative vertices to the representative
+            for &v in members {
+                if v == *rep {
+                    continue;
+                }
+
+                // Reroute all halfedges pointing TO v (he.vertex == v)
+                let hes_to_reroute: Vec<HalfedgeId> = self
+                    .halfedges()
+                    .filter(|&he| {
+                        self.connectivity
+                            .halfedges
+                            .get(he)
+                            .map(|h| h.vertex == v)
+                            .unwrap_or(false)
+                    })
+                    .collect();
+
+                for he in hes_to_reroute {
+                    self.connectivity.halfedges.get_mut(he).unwrap().vertex = *rep;
+                }
+
+                // Transfer outgoing halfedge if needed
+                if let Ok(outgoing) = v.halfedge().run(self) {
+                    if rep.halfedge().run(self).is_err() || rep.is_isolated(self) {
+                        self.get_mut(*rep).set_halfedge(Some(outgoing))?;
+                    }
+                }
+
+                // Delete the old vertex
+                self.positions.remove(v);
+                self.connectivity.vertices.remove(v);
+                total_merges += 1;
+            }
+        }
+
+        // Phase 4: Clean up degeneracies
+        // Remove degenerate edges (src == dst)
+        let degenerate_edges: Vec<HalfedgeId> = self
+            .halfedges()
+            .filter(|&he| {
+                let dst = self.connectivity.halfedges.get(he).map(|h| h.vertex);
+                let src = he
+                    .opposite()
+                    .run(self)
+                    .ok()
+                    .and_then(|opp| self.connectivity.halfedges.get(opp).map(|h| h.vertex));
+                dst.is_some() && dst == src
+            })
+            .collect();
+
+        for he in degenerate_edges {
+            if self.halfedges().any(|h| h == he) {
+                self.delete_only_edge(he)?;
+            }
+        }
+
+        // Remove degenerate faces (faces with duplicate vertices)
+        let degenerate_faces: Vec<FaceId> = self
+            .faces()
+            .filter(|&f| {
+                let verts: Vec<VertexId> = f.vertices(self).collect();
+                let unique: HashSet<VertexId> = verts.iter().copied().collect();
+                unique.len() < verts.len() || verts.len() < 3
+            })
+            .collect();
+
+        for f in degenerate_faces {
+            if self.faces().any(|face| face == f) {
+                self.delete_only_face(f)?;
+            }
+        }
+
+        // Adjust outgoing halfedges for affected vertices
+        for (rep, _) in &merge_clusters {
+            if self.vertices().any(|v| v == *rep) {
+                let _ = self.get_mut(*rep).adjust_outgoing_halfedge();
+            }
+        }
+
+        Ok(total_merges)
+    }
+
     pub fn combine_with(&mut self, other: SMesh) -> SMeshResult<()> {
         // Copy verts
         let mut v_map = HashMap::new();
@@ -517,6 +833,291 @@ mod tests {
     use glam::vec3;
 
     use super::*;
+
+    #[test]
+    fn test_weld_overlapping_cubes() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+        let (other, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        let verts_before_combine = mesh.vertices().len();
+        mesh.combine_with(other)?;
+        // After combine, should have double the vertices
+        assert_eq!(mesh.vertices().len(), verts_before_combine * 2);
+
+        let merges = mesh.weld_vertices(0.01)?;
+        // All 8 vertices of the overlapping cube should merge
+        assert!(merges > 0, "Should have merged some vertices");
+        assert!(
+            mesh.vertices().len() < verts_before_combine * 2,
+            "Vertex count should decrease after weld"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_weld_no_change() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        let verts_before = mesh.vertices().len();
+        let merges = mesh.weld_vertices(0.01)?;
+        assert_eq!(merges, 0);
+        assert_eq!(mesh.vertices().len(), verts_before);
+        Ok(())
+    }
+
+    #[test]
+    fn test_weld_threshold_respected() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        mesh.add_vertex(vec3(0.5, 0.0, 0.0));
+        mesh.add_vertex(vec3(2.0, 0.0, 0.0));
+
+        // Threshold too small - no merge
+        let merges = mesh.weld_vertices(0.4)?;
+        assert_eq!(merges, 0);
+        assert_eq!(mesh.vertices().len(), 3);
+
+        // Threshold large enough to merge v0 and v1
+        let merges = mesh.weld_vertices(0.6)?;
+        assert_eq!(merges, 1);
+        assert_eq!(mesh.vertices().len(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_weld_separate_components() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        // Component 1: a triangle
+        let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(0.5, 1.0, 0.0));
+        mesh.make_triangle(v0, v1, v2)?;
+
+        // Component 2: another triangle with one vertex near v0
+        let v3 = mesh.add_vertex(vec3(0.01, 0.0, 0.0)); // Near v0
+        let v4 = mesh.add_vertex(vec3(-1.0, 0.0, 0.0));
+        let v5 = mesh.add_vertex(vec3(-0.5, 1.0, 0.0));
+        mesh.make_triangle(v3, v5, v4)?;
+
+        assert_eq!(mesh.vertices().len(), 6);
+        let merges = mesh.weld_vertices(0.05)?;
+        assert_eq!(merges, 1);
+        assert_eq!(mesh.vertices().len(), 5);
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_single_quad() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(-1.0, 0.0, -1.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, -1.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 0.0, 1.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 0.0, 1.0));
+        mesh.make_quad(v0, v1, v2, v3)?;
+
+        let he = v0.halfedge_to(v1).run(mesh)?;
+        let sel = mesh.loop_cut(he, 0.5)?;
+
+        // Single quad split into two quads
+        assert_eq!(mesh.faces().len(), 2);
+        // 4 original + 2 new midpoint = 6
+        assert_eq!(mesh.vertices().len(), 6);
+
+        let new_verts = sel.resolve_to_vertices(mesh)?;
+        assert!(new_verts.len() >= 2);
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_cube_strip() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        let initial_faces = mesh.faces().len();
+        let initial_verts = mesh.vertices().len();
+
+        // Find a non-boundary halfedge that belongs to a quad face
+        let he = mesh
+            .halfedges()
+            .find(|&h| !h.is_boundary(&mesh) && h.face().run(&mesh).map(|f| f.valence(&mesh) == 4).unwrap_or(false))
+            .unwrap();
+
+        mesh.loop_cut(he, 0.5)?;
+
+        // Should have more faces and vertices than before
+        assert!(mesh.faces().len() > initial_faces);
+        assert!(mesh.vertices().len() > initial_verts);
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_midpoint() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(2.0, 0.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(2.0, 2.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(0.0, 2.0, 0.0));
+        mesh.make_quad(v0, v1, v2, v3)?;
+
+        let he = v0.halfedge_to(v1).run(mesh)?;
+        let sel = mesh.loop_cut(he, 0.5)?;
+
+        // Check new vertices are at midpoints
+        let new_verts = sel.resolve_to_vertices(mesh)?;
+        for v in new_verts {
+            let pos = v.position(mesh)?;
+            // New midpoint vertices should be at x=1.0 (midpoint of v0-v1 and v3-v2)
+            // or at y=1.0 (midpoint of other edges)
+            // At least one coordinate should be a midpoint value
+            let is_original = (pos.x == 0.0 || pos.x == 2.0) && (pos.y == 0.0 || pos.y == 2.0);
+            if !is_original {
+                // This is a new vertex, should be at midpoint
+                assert!(
+                    (pos.x - 1.0).abs() < 1e-5 || (pos.y - 1.0).abs() < 1e-5,
+                    "New vertex at {:?} should be at a midpoint",
+                    pos
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_valid_mesh() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(-1.0, 0.0, -1.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, -1.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 0.0, 1.0));
+        let v3 = mesh.add_vertex(vec3(-1.0, 0.0, 1.0));
+        mesh.make_quad(v0, v1, v2, v3)?;
+
+        let he = v0.halfedge_to(v1).run(mesh)?;
+        mesh.loop_cut(he, 0.5)?;
+
+        let report = mesh.validate();
+        assert!(
+            report.is_valid(),
+            "Mesh should have no validation issues after loop cut: {}",
+            report
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_stops_at_non_quad() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        // Create a quad adjacent to a triangle
+        let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
+        mesh.make_quad(v0, v1, v2, v3)?;
+
+        // Add a triangle adjacent to edge v2-v3
+        let v4 = mesh.add_vertex(vec3(1.5, 0.5, 0.0));
+        mesh.make_triangle(v2, v1, v4)?;
+
+        let initial_faces = mesh.faces().len();
+        let he = v0.halfedge_to(v1).run(mesh)?;
+        mesh.loop_cut(he, 0.5)?;
+
+        // The quad should be split but the triangle should remain
+        // Original: 2 faces. After: quad becomes 2 + triangle stays = 3
+        assert!(mesh.faces().len() > initial_faces);
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_cylinder() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cylinder, Primitive};
+        let (mut mesh, _) = Cylinder {
+            segments: 8,
+            height: 2.0,
+            radius: 1.0,
+        }
+        .generate()?;
+
+        let initial_faces = mesh.faces().len();
+
+        // Find a side quad edge (not on cap faces)
+        let he = mesh
+            .halfedges()
+            .find(|&h| {
+                !h.is_boundary(&mesh)
+                    && h.face()
+                        .run(&mesh)
+                        .map(|f| f.valence(&mesh) == 4)
+                        .unwrap_or(false)
+            })
+            .unwrap();
+
+        mesh.loop_cut(he, 0.5)?;
+
+        // Should have more faces (each quad in the ring split into 2)
+        assert!(mesh.faces().len() > initial_faces);
+        Ok(())
+    }
+
+    #[test]
+    fn test_loop_cut_double_cut_cylinder() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cylinder, Primitive};
+        let (mut mesh, _) = Cylinder {
+            segments: 8,
+            height: 2.0,
+            radius: 0.5,
+        }
+        .generate()?;
+
+        // First cut at 1/3
+        let he = mesh
+            .halfedges()
+            .find(|&h| {
+                if h.is_boundary(&mesh) { return false; }
+                let face = h.face().run(&mesh).ok();
+                if face.map(|f| f.valence(&mesh)).unwrap_or(0) != 4 { return false; }
+                let src = h.src_vert().position(&mesh).unwrap_or_default();
+                let dst = h.dst_vert().position(&mesh).unwrap_or_default();
+                (dst - src).normalize().y.abs() > 0.8
+            })
+            .unwrap();
+        mesh.loop_cut(he, 0.33)?;
+
+        let faces_after_first = mesh.faces().len();
+
+        // Second cut — find a vertical edge in the upper portion.
+        // After the first cut at t=0.33 (height 2.0, y=-1..1), cut is at y≈-0.34.
+        // Upper edges go from y≈-0.34 to y=1.0. Filter for edges NOT touching y=-1.0.
+        let he2 = mesh
+            .halfedges()
+            .find(|&h| {
+                if h.is_boundary(&mesh) { return false; }
+                let face = h.face().run(&mesh).ok();
+                if face.map(|f| f.valence(&mesh)).unwrap_or(0) != 4 { return false; }
+                let src = h.src_vert().position(&mesh).unwrap_or_default();
+                let dst = h.dst_vert().position(&mesh).unwrap_or_default();
+                let dir = (dst - src).normalize();
+                dir.y.abs() > 0.5 && src.y.min(dst.y) > -0.5
+            })
+            .expect("Should find a vertical edge in the upper portion for second cut");
+
+        mesh.loop_cut(he2, 0.5)?;
+        assert!(mesh.faces().len() > faces_after_first);
+        Ok(())
+    }
 
     #[test]
     fn inset_single_quad() -> SMeshResult<()> {
