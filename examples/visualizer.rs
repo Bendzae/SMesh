@@ -1,7 +1,6 @@
-use bevy::color::palettes::css::{BLACK, WHITE};
+use bevy::color::palettes::css::BLACK;
 use bevy::prelude::*;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use itertools::Itertools;
@@ -39,17 +38,17 @@ fn init_system(mut commands: Commands) {
         Msaa::Sample4,
         Transform::from_translation(Vec3::new(0.0, 1.5, 17.0)),
         PanOrbitCamera::default(),
+        AmbientLight {
+            color: Color::WHITE,
+            brightness: 300.0,
+            affects_lightmapped_meshes: true,
+        },
     ));
 }
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(BLACK.into()))
-        .insert_resource(AmbientLight {
-            color: WHITE.into(),
-            brightness: 0.3,
-            affects_lightmapped_meshes: true,
-        })
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,

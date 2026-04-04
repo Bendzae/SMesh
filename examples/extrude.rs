@@ -94,17 +94,17 @@ fn init_system(
         Transform::from_translation(vec3(0.0, 5.0, 7.0)),
         PanOrbitCamera::default(),
         Msaa::Sample4,
+        AmbientLight {
+            color: Color::WHITE,
+            brightness: 300.0,
+            affects_lightmapped_meshes: true,
+        },
     ));
 }
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 300.0,
-            affects_lightmapped_meshes: true,
-        })
         .add_plugins((
             DefaultPlugins,
             PanOrbitCameraPlugin,
