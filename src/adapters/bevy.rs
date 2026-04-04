@@ -165,8 +165,8 @@ fn debug_draw_smesh(
         } else {
             GREEN
         };
-        gizmos.sphere(Isometry3d::from_translation(v_pos), 0.08, color);
-        gizmos.arrow(v_pos, v_pos + v_id.normal(mesh)? * 0.2, color);
+        gizmos.sphere(Isometry3d::from_translation(v_pos), 0.035, color);
+        gizmos.arrow(v_pos, v_pos + v_id.normal(mesh)? * 0.07, color);
     }
     // Halfedges
     for he_id in mesh.halfedges() {
@@ -217,7 +217,7 @@ fn debug_draw_smesh(
 
 fn draw_halfedge(gizmos: &mut Gizmos, v0: Vec3, v1: Vec3, normal: Vec3, color: Srgba) {
     let dir = (v1 - v0).normalize();
-    let offset = dir.cross(normal) * 0.05;
+    let offset = dir.cross(normal) * 0.02;
     let line_start = v0 - offset + dir * 0.1;
     let line_end = v1 - offset - dir * 0.1;
     gizmos.line(line_start, line_end, color);
