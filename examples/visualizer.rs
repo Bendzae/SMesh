@@ -45,10 +45,10 @@ fn init_system(mut commands: Commands) {
 fn main() {
     App::new()
         .insert_resource(ClearColor(BLACK.into()))
-        .insert_resource(AmbientLight {
+        .insert_resource(GlobalAmbientLight {
             color: WHITE.into(),
             brightness: 0.3,
-            affects_lightmapped_meshes: true,
+            ..default()
         })
         .add_plugins((
             DefaultPlugins,

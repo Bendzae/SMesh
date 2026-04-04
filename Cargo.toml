@@ -18,7 +18,7 @@ thiserror = "2.0.9"
 xatlas-rs-v2 = { version = "0.1.4", optional = true } # Optional dependency for UV unwrapping
 
 # Adapter dependencies
-bevy = { version = "0.17", default-features = false, features = [
+bevy = { version = "0.18", default-features = false, features = [
   "bevy_pbr",
   "bevy_ui",
   "bevy_gizmos",
@@ -28,9 +28,9 @@ euc = { version = "0.5.3", optional = true }
 image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
 
 [dev-dependencies]
-bevy = "0.17.2"
-bevy_panorbit_camera = { version = "0.32.0", features = ["bevy_egui"] }
-bevy-inspector-egui = "0.35.0"
+bevy = "0.18.1"
+bevy_panorbit_camera = { version = "0.34.0", features = ["bevy_egui"] }
+bevy-inspector-egui = "0.36.0"
 fastrand = "2.3.0"
 fastrand-contrib = "0.1.0"
 

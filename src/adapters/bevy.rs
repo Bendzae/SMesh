@@ -400,10 +400,10 @@ pub struct ShowcasePlugin;
 impl Plugin for ShowcasePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(ClearColor(Color::BLACK))
-            .insert_resource(AmbientLight {
+            .insert_resource(GlobalAmbientLight {
                 color: Color::srgb(0.95, 0.90, 0.80),
                 brightness: 150.0,
-                affects_lightmapped_meshes: true,
+                ..default()
             })
             .add_plugins(SMeshDebugDrawPlugin)
             .add_systems(Startup, showcase_setup);

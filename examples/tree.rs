@@ -186,10 +186,10 @@ fn init_system(
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(AmbientLight {
+        .insert_resource(GlobalAmbientLight {
             color: Color::WHITE,
             brightness: 300.0,
-            affects_lightmapped_meshes: true,
+            ..default()
         })
         .add_plugins((
             DefaultPlugins,
