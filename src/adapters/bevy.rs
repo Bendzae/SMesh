@@ -395,6 +395,39 @@ fn update_ui_system(
 ///     })
 ///     .run();
 /// ```
+/// Marker component for showcase cameras.
+///
+/// Provides Camera3d, HDR, SSAO (Ultra), TAA, and MSAA off.
+/// Spawn with a `PanOrbitCamera` to control the view:
+///
+/// ```ignore
+/// commands.spawn((
+///     ShowcaseCamera,
+///     PanOrbitCamera { focus: vec3(0.0, 0.5, 0.0), radius: Some(2.0), .. },
+/// ));
+/// ```
+#[derive(Component)]
+#[require(
+    Camera3d,
+    bevy::render::view::Hdr,
+    bevy::anti_alias::taa::TemporalAntiAliasing,
+)]
+pub struct ShowcaseCamera;
+
+impl ShowcaseCamera {
+    /// Returns the full set of components needed for a showcase camera.
+    pub fn bundle() -> impl Bundle {
+        (
+            ShowcaseCamera,
+            Msaa::Off,
+            bevy::pbr::ScreenSpaceAmbientOcclusion {
+                quality_level: bevy::pbr::ScreenSpaceAmbientOcclusionQualityLevel::Ultra,
+                ..Default::default()
+            },
+        )
+    }
+}
+
 pub struct ShowcasePlugin;
 
 impl Plugin for ShowcasePlugin {

@@ -9,7 +9,7 @@ use glam::vec3;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, Selection, ShowcasePlugin},
+    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -736,10 +736,7 @@ fn init_system(
     ));
 
     commands.spawn((
-        Camera3d::default(),
-        Msaa::Off,
-        bevy::pbr::ScreenSpaceAmbientOcclusion::default(),
-        bevy::anti_alias::taa::TemporalAntiAliasing::default(),
+        ShowcaseCamera::bundle(),
         PanOrbitCamera {
             focus: vec3(0.2, 0.4, 0.0),
             radius: Some(2.5),
