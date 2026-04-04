@@ -3,7 +3,7 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
+    adapters::bevy::{DebugDrawMode, DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -166,7 +166,7 @@ fn init_system(
         DebugRenderSMesh {
             mesh: wall,
             selection: Selection::Vertex(v0),
-            visible: true,
+            draw_mode: DebugDrawMode::Wireframe,
         },
     ));
 
@@ -184,7 +184,7 @@ fn init_system(
         DebugRenderSMesh {
             mesh: cylinder,
             selection: Selection::Vertex(v0),
-            visible: true,
+            draw_mode: DebugDrawMode::Wireframe,
         },
     ));
 
@@ -202,7 +202,7 @@ fn init_system(
         DebugRenderSMesh {
             mesh: quad,
             selection: Selection::Vertex(v0),
-            visible: true,
+            draw_mode: DebugDrawMode::Wireframe,
         },
     ));
 

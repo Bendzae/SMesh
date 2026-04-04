@@ -9,7 +9,7 @@ use glam::vec3;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
+    adapters::bevy::{DebugDrawMode, DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -112,7 +112,6 @@ fn make_cylinder(radius: f32, height: f32, segments: usize, position: Vec3) -> S
 fn make_window(position: Vec3, facing: Vec3) -> SMeshResult<SMesh> {
     let mut win = SMesh::new();
 
-    // Determine rotation based on facing direction
     let rot = if facing.z.abs() > 0.5 {
         let depth_dir = facing.z.signum();
         Quat::from_rotation_y(if depth_dir > 0.0 { 0.0 } else { PI })
@@ -121,25 +120,61 @@ fn make_window(position: Vec3, facing: Vec3) -> SMeshResult<SMesh> {
         Quat::from_rotation_y(if depth_dir > 0.0 { PI / 2.0 } else { -PI / 2.0 })
     };
 
-    // Frame (outer border, slightly proud of wall)
     let frame_outer_w = WINDOW_WIDTH + DOOR_FRAME_WIDTH * 2.0;
     let frame_outer_h = WINDOW_HEIGHT + DOOR_FRAME_WIDTH + WINDOW_HEADER_HEIGHT;
-    let (mut frame, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
-    let all = frame.select_all();
-    frame.scale(all.clone(), vec3(frame_outer_w, frame_outer_h, WINDOW_FRAME_DEPTH), Pivot::Origin)?;
-    frame.rotate(all.clone(), rot, Pivot::Origin)?;
-    frame.translate(all, position + vec3(0.0, WINDOW_HEADER_HEIGHT * 0.3, 0.0))?;
-    win.combine_with(frame)?;
+    let recess_depth = WINDOW_FRAME_DEPTH * 2.5;
 
-    // Recessed glass pane (slightly behind the frame)
-    let (mut pane, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
-    let all = pane.select_all();
-    pane.scale(all.clone(), vec3(WINDOW_WIDTH, WINDOW_HEIGHT, 0.02), Pivot::Origin)?;
-    pane.rotate(all.clone(), rot, Pivot::Origin)?;
-    pane.translate(all, position)?;
-    win.combine_with(pane)?;
+    // Build window block in local space (+Z = outward), then rotate+translate at the end.
+    // Start with a cube, inset the front face to create the frame, extrude inward for the recess.
+    let (mut block, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
+    let all = block.select_all();
+    block.scale(all, vec3(frame_outer_w, frame_outer_h, WINDOW_FRAME_DEPTH), Pivot::Origin)?;
 
-    // Window sill
+    // Find the front face (+Z)
+    let front_face = block.faces_facing(Vec3::Z, 0.1).into_iter().next()
+        .ok_or(SMeshError::DefaultError)?;
+
+    // Inset to create the frame border
+    let inner = block.inset(front_face, 0.12)?;
+
+    // Extrude the inner face inward to create the recess
+    let recessed = block.extrude(inner)?;
+    let recess_verts: Vec<VertexId> = recessed.vertices(&block).collect();
+    for &v in &recess_verts {
+        let pos = v.position(&block)?;
+        block.positions.insert(v, pos + vec3(0.0, 0.0, -recess_depth));
+    }
+
+    // Clear stale normals (inset/extrude invalidated the original face IDs)
+    block.face_normals = None;
+    block.vertex_normals = None;
+
+    // Rotate and position
+    let all = block.select_all();
+    block.rotate(all.clone(), rot, Pivot::Origin)?;
+    block.translate(all, position + vec3(0.0, WINDOW_HEADER_HEIGHT * 0.3, 0.0))?;
+    win.combine_with(block)?;
+
+    // Mullions sit inside the recess
+    let mullion_z_offset = -facing.normalize() * (recess_depth * 0.3);
+
+    // Vertical mullion
+    let (mut vdiv, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
+    let all = vdiv.select_all();
+    vdiv.scale(all.clone(), vec3(WINDOW_DIVIDER_SIZE, WINDOW_HEIGHT * 0.85, recess_depth * 0.8), Pivot::Origin)?;
+    vdiv.rotate(all.clone(), rot, Pivot::Origin)?;
+    vdiv.translate(all, position + mullion_z_offset)?;
+    win.combine_with(vdiv)?;
+
+    // Horizontal mullion
+    let (mut hdiv, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
+    let all = hdiv.select_all();
+    hdiv.scale(all.clone(), vec3(WINDOW_WIDTH * 0.85, WINDOW_DIVIDER_SIZE, recess_depth * 0.8), Pivot::Origin)?;
+    hdiv.rotate(all.clone(), rot, Pivot::Origin)?;
+    hdiv.translate(all, position + vec3(0.0, 0.1, 0.0) + mullion_z_offset)?;
+    win.combine_with(hdiv)?;
+
+    // Window sill (projects outward from wall)
     let (mut sill, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = sill.select_all();
     sill.scale(all.clone(), vec3(frame_outer_w + 0.06, WINDOW_SILL_HEIGHT, WINDOW_SILL_DEPTH), Pivot::Origin)?;
@@ -147,30 +182,13 @@ fn make_window(position: Vec3, facing: Vec3) -> SMeshResult<SMesh> {
     sill.translate(all, position + vec3(0.0, -WINDOW_HEIGHT / 2.0 - WINDOW_SILL_HEIGHT / 2.0, 0.0))?;
     win.combine_with(sill)?;
 
-    // Window header / lintel
+    // Header / lintel
     let (mut header, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = header.select_all();
     header.scale(all.clone(), vec3(frame_outer_w + 0.04, WINDOW_HEADER_HEIGHT, WINDOW_HEADER_DEPTH), Pivot::Origin)?;
     header.rotate(all.clone(), rot, Pivot::Origin)?;
     header.translate(all, position + vec3(0.0, WINDOW_HEIGHT / 2.0 + WINDOW_HEADER_HEIGHT / 2.0 + DOOR_FRAME_WIDTH * 0.5, 0.0))?;
     win.combine_with(header)?;
-
-    // Cross dividers (mullions)
-    // Vertical divider
-    let (mut vdiv, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
-    let all = vdiv.select_all();
-    vdiv.scale(all.clone(), vec3(WINDOW_DIVIDER_SIZE, WINDOW_HEIGHT, WINDOW_FRAME_DEPTH * 0.8), Pivot::Origin)?;
-    vdiv.rotate(all.clone(), rot, Pivot::Origin)?;
-    vdiv.translate(all, position)?;
-    win.combine_with(vdiv)?;
-
-    // Horizontal divider
-    let (mut hdiv, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
-    let all = hdiv.select_all();
-    hdiv.scale(all.clone(), vec3(WINDOW_WIDTH, WINDOW_DIVIDER_SIZE, WINDOW_FRAME_DEPTH * 0.8), Pivot::Origin)?;
-    hdiv.rotate(all.clone(), rot, Pivot::Origin)?;
-    hdiv.translate(all, position + vec3(0.0, 0.1, 0.0))?;
-    win.combine_with(hdiv)?;
 
     Ok(win)
 }
@@ -362,29 +380,23 @@ fn generate_house(params: &HouseParameters) -> SMeshResult<SMesh> {
         true,
     )?)?;
 
-    // Gable end fills — stepped boxes approximating a triangle
-    // Start at wall top, not cornice top, to avoid a gap
+    // Gable end fills — wedge (triangular prism) at each end
     let gable_start_y = eave_height + FOUNDATION_HEIGHT;
-    let gable_total_h = roof_base_y + roof_rise - gable_start_y;
-    let n_gable_layers = 6;
-    let layer_h = gable_total_h / n_gable_layers as f32;
-    let tan_angle = params.roof_angle.to_radians().tan();
-    for i in 0..n_gable_layers {
-        let layer_bottom = gable_start_y + layer_h * i as f32;
-        let layer_top = layer_bottom + layer_h;
-        let layer_mid_y = (layer_bottom + layer_top) / 2.0;
-        // Width narrows linearly based on distance from roof_base_y (where slope starts)
-        let height_into_slope = (layer_top - roof_base_y).max(0.0);
-        let width_at_top = params.main_width - 2.0 * height_into_slope / tan_angle;
-        if width_at_top <= 0.0 {
-            break;
+    let gable_h = roof_rise;
+    for &z_sign in &[1.0_f32, -1.0] {
+        let (mut gable, _) = primitives::Wedge {
+            width: params.main_width,
+            height: gable_h,
+            depth: params.wall_thickness,
+        }.generate()?;
+        let all = gable.select_all();
+        // Wedge depth runs along Z — rotate so the triangular face points along Z
+        // Then flip for back gable
+        if z_sign < 0.0 {
+            gable.rotate(all.clone(), Quat::from_rotation_y(PI), Pivot::Origin)?;
         }
-        for &z in &[params.main_depth / 2.0, -params.main_depth / 2.0] {
-            mesh.combine_with(make_box(
-                width_at_top, layer_h, params.wall_thickness,
-                vec3(0.0, layer_mid_y, z),
-            )?)?;
-        }
+        gable.translate(all, vec3(0.0, gable_start_y, z_sign * params.main_depth / 2.0))?;
+        mesh.combine_with(gable)?;
     }
 
     // === Roof - Wing (lower with slightly less steep slope) ===
@@ -402,29 +414,22 @@ fn generate_house(params: &HouseParameters) -> SMeshResult<SMesh> {
         true,
     )?)?;
 
-    // Wing gable fills
-    // Wing gable fills — start at wing wall top
+    // Wing gable fills — wedge at each end
     let wing_gable_start_y = wing_height + FOUNDATION_HEIGHT;
-    let wing_gable_total_h = wing_roof_y + wing_roof_rise - wing_gable_start_y;
-    let wing_tan = wing_angle.to_radians().tan();
-    let wing_layer_h = wing_gable_total_h / n_gable_layers as f32;
-    for i in 0..n_gable_layers {
-        let layer_bottom = wing_gable_start_y + wing_layer_h * i as f32;
-        let layer_top = layer_bottom + wing_layer_h;
-        let layer_mid_y = (layer_bottom + layer_top) / 2.0;
-        let height_into_slope = (layer_top - wing_roof_y).max(0.0);
-        let width_at_top = params.wing_width - 2.0 * height_into_slope / wing_tan;
-        if width_at_top <= 0.0 {
-            break;
+    let wing_gable_h = wing_roof_rise;
+    for &z_sign in &[1.0_f32, -1.0] {
+        let (mut gable, _) = primitives::Wedge {
+            width: params.wing_width,
+            height: wing_gable_h,
+            depth: params.wall_thickness,
+        }.generate()?;
+        let all = gable.select_all();
+        if z_sign < 0.0 {
+            gable.rotate(all.clone(), Quat::from_rotation_y(PI), Pivot::Origin)?;
         }
-        let wing_front_z = wing_z + params.wing_depth / 2.0;
-        let wing_back_z = wing_z - params.wing_depth / 2.0;
-        for &z in &[wing_front_z, wing_back_z] {
-            mesh.combine_with(make_box(
-                width_at_top, wing_layer_h, params.wall_thickness,
-                vec3(wing_offset_x, layer_mid_y, z),
-            )?)?;
-        }
+        let gz = wing_z + z_sign * params.wing_depth / 2.0;
+        gable.translate(all, vec3(wing_offset_x, wing_gable_start_y, gz))?;
+        mesh.combine_with(gable)?;
     }
 
     // === Windows - Front face (main body, +Z side) ===
@@ -693,6 +698,9 @@ fn generate_house(params: &HouseParameters) -> SMeshResult<SMesh> {
         )?)?;
     }
 
+    // Weld coincident vertices from all the combine_with calls
+    mesh.weld_vertices(0.01)?;
+
     mesh.recalculate_normals()?;
     Ok(mesh)
 }
@@ -712,7 +720,7 @@ fn update_house_system(
                 DebugRenderSMesh {
                     mesh: smesh,
                     selection: Selection::Vertex(v0),
-                    visible: false,
+                    draw_mode: DebugDrawMode::Off,
                 },
             ));
         }

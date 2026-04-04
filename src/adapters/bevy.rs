@@ -132,11 +132,19 @@ pub enum Selection {
     None,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum DebugDrawMode {
+    #[default]
+    Off,
+    Wireframe,
+    Full,
+}
+
 #[derive(Component)]
 pub struct DebugRenderSMesh {
     pub mesh: SMesh,
     pub selection: Selection,
-    pub visible: bool,
+    pub draw_mode: DebugDrawMode,
 }
 
 #[derive(Component)]
@@ -144,11 +152,44 @@ struct UiTag;
 
 fn debug_draw_smesh_system(q_smesh: Query<(&DebugRenderSMesh, &Transform)>, mut gizmos: Gizmos) {
     for (debug_smesh, t) in &q_smesh {
-        if debug_smesh.visible {
-            debug_draw_smesh(debug_smesh, t, &mut gizmos)
-                .unwrap_or_else(|e| warn!("Error while drawing mesh: {:?}", e));
+        match debug_smesh.draw_mode {
+            DebugDrawMode::Off => {}
+            DebugDrawMode::Wireframe => {
+                debug_draw_wireframe(debug_smesh, t, &mut gizmos)
+                    .unwrap_or_else(|e| warn!("Error while drawing wireframe: {:?}", e));
+            }
+            DebugDrawMode::Full => {
+                debug_draw_smesh(debug_smesh, t, &mut gizmos)
+                    .unwrap_or_else(|e| warn!("Error while drawing mesh: {:?}", e));
+            }
         }
     }
+}
+
+fn debug_draw_wireframe(
+    debug_smesh: &DebugRenderSMesh,
+    t: &Transform,
+    gizmos: &mut Gizmos,
+) -> SMeshResult<()> {
+    let mesh = &debug_smesh.mesh;
+    use std::collections::HashSet;
+    let mut drawn_edges: HashSet<(VertexId, VertexId)> = HashSet::new();
+
+    for he_id in mesh.halfedges() {
+        let v_src = he_id.src_vert().run(mesh)?;
+        let v_dst = he_id.dst_vert().run(mesh)?;
+        let key = if v_src < v_dst { (v_src, v_dst) } else { (v_dst, v_src) };
+        if !drawn_edges.insert(key) {
+            continue;
+        }
+        let p0 = t.transform_point(*mesh.positions.get(v_src).unwrap());
+        let p1 = t.transform_point(*mesh.positions.get(v_dst).unwrap());
+        let is_boundary = he_id.is_boundary(mesh)
+            || he_id.opposite().run(mesh).map(|o| o.is_boundary(mesh)).unwrap_or(true);
+        let color = if is_boundary { ORANGE_RED } else { GREEN };
+        gizmos.line(p0, p1, color);
+    }
+    Ok(())
 }
 
 fn debug_draw_smesh(
@@ -238,9 +279,13 @@ fn change_selection_inner(
 ) -> SMeshResult<()> {
     for mut d in q_smesh.iter_mut() {
         if input.just_pressed(KeyCode::KeyH) {
-            d.visible = !d.visible;
+            d.draw_mode = match d.draw_mode {
+                DebugDrawMode::Off => DebugDrawMode::Wireframe,
+                DebugDrawMode::Wireframe => DebugDrawMode::Full,
+                DebugDrawMode::Full => DebugDrawMode::Off,
+            };
         }
-        if !d.visible {
+        if d.draw_mode == DebugDrawMode::Off {
             continue;
         }
         match d.selection {
@@ -359,11 +404,16 @@ fn update_ui_system(
                 },
             ))
             .with_children(|builder| {
+                let mode_label = match d.draw_mode {
+                    DebugDrawMode::Off => "H: debug gizmos [off]",
+                    DebugDrawMode::Wireframe => "H: debug gizmos [wireframe]",
+                    DebugDrawMode::Full => "H: debug gizmos [full]",
+                };
                 builder.spawn((
-                    Text::new("H: hide/show debug gizmos"),
+                    Text::new(mode_label),
                     TextFont::from_font_size(32.0),
                 ));
-                if d.visible {
+                if d.draw_mode == DebugDrawMode::Full {
                     for s in &values {
                         builder.spawn((Text::new(*s), TextFont::from_font_size(32.0)));
                     }

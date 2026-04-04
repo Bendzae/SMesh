@@ -6,7 +6,7 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 
 use itertools::Itertools;
 use primitives::{Icosphere, Primitive};
-use smesh::adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection};
+use smesh::adapters::bevy::{DebugDrawMode, DebugRenderSMesh, SMeshDebugDrawPlugin, Selection};
 use smesh::prelude::*;
 
 fn init_system(mut commands: Commands) {
@@ -29,7 +29,7 @@ fn init_system(mut commands: Commands) {
         DebugRenderSMesh {
             mesh: smesh,
             selection: Selection::Vertex(data.top_vertex),
-            visible: true,
+            draw_mode: DebugDrawMode::Wireframe,
         },
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));

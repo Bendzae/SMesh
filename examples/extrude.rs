@@ -5,7 +5,7 @@ use glam::vec3;
 
 use itertools::Itertools;
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
+    adapters::bevy::{DebugDrawMode, DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
     prelude::*,
 };
 use transform::Pivot;
@@ -78,7 +78,7 @@ fn init_system(
         DebugRenderSMesh {
             mesh: extrude_mesh,
             selection: Selection::Vertex(v0),
-            visible: true,
+            draw_mode: DebugDrawMode::Wireframe,
         },
     ));
 

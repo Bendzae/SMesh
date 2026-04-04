@@ -9,7 +9,7 @@ use glam::vec3;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
+    adapters::bevy::{DebugDrawMode, DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -253,7 +253,7 @@ fn update_chair_system(
                 DebugRenderSMesh {
                     mesh: smesh,
                     selection: Selection::Vertex(v0),
-                    visible: false,
+                    draw_mode: DebugDrawMode::Off,
                 },
             ));
         }

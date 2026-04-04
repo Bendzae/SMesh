@@ -13,7 +13,7 @@ use glam::vec3;
 use itertools::Itertools;
 use primitives::{Circle, Icosphere, Primitive};
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
+    adapters::bevy::{DebugDrawMode, DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
     prelude::*,
 };
 use transform::Pivot;
@@ -117,7 +117,7 @@ fn update_tree_system(
                 DebugRenderSMesh {
                     mesh: smesh,
                     selection: Selection::Vertex(v0),
-                    visible: false,
+                    draw_mode: DebugDrawMode::Off,
                 },
             ));
             info!("Regenerated tree");

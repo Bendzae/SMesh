@@ -3,7 +3,7 @@ use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
 
 use smesh::{
-    adapters::bevy::{DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
+    adapters::bevy::{DebugDrawMode, DebugRenderSMesh, Selection, ShowcaseCamera, ShowcasePlugin},
     prelude::*,
 };
 use primitives::Primitive;
@@ -28,7 +28,7 @@ fn spawn_primitive(
         DebugRenderSMesh {
             mesh: smesh,
             selection: Selection::Vertex(v0),
-            visible: false,
+            draw_mode: DebugDrawMode::Off,
         },
     ));
 }
