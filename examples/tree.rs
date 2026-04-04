@@ -3,8 +3,8 @@ use std::f32::consts::PI;
 
 use bevy::{math::cubic_splines::LinearSpline, prelude::*};
 use bevy_inspector_egui::{
-    bevy_egui::EguiPlugin,
-    inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
+    bevy_egui::EguiPlugin, inspector_options::ReflectInspectorOptions,
+    quick::ResourceInspectorPlugin, InspectorOptions,
 };
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use fastrand_contrib::RngExt;
@@ -44,7 +44,7 @@ fn generate_tree(params: TreeParameters) -> SMeshResult<SMesh> {
 
     let n_control_points = params.height.floor() as usize;
     // let n_control_points = 3;
-    for i in (1..n_control_points) {
+    for i in 1..n_control_points {
         control_points.push(vec3(
             rng.f32_range(-0.5..0.5),
             i as f32 / n_control_points as f32,
@@ -180,22 +180,18 @@ fn init_system(
         Msaa::Sample4,
         Transform::from_translation(Vec3::new(0.0, 5.0, 10.0)),
         PanOrbitCamera::default(),
+        AmbientLight {
+            color: Color::WHITE,
+            brightness: 300.0,
+            affects_lightmapped_meshes: true,
+        },
     ));
 }
 
 fn main() {
     App::new()
         .insert_resource(ClearColor(Color::BLACK))
-        .insert_resource(AmbientLight {
-            color: Color::WHITE,
-            brightness: 300.0,
-            affects_lightmapped_meshes: true,
-        })
-        .add_plugins((
-            DefaultPlugins,
-            PanOrbitCameraPlugin,
-            SMeshDebugDrawPlugin,
-        ))
+        .add_plugins((DefaultPlugins, PanOrbitCameraPlugin, SMeshDebugDrawPlugin))
         .add_plugins(EguiPlugin::default())
         .add_plugins(ResourceInspectorPlugin::<TreeParameters>::default())
         .add_systems(Startup, init_system)
