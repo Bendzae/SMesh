@@ -109,88 +109,107 @@ fn make_cylinder(radius: f32, height: f32, segments: usize, position: Vec3) -> S
     Ok(cyl)
 }
 
-fn make_window(position: Vec3, facing: Vec3) -> SMeshResult<SMesh> {
-    let mut win = SMesh::new();
+/// Find a halfedge on a quad face aligned with `axis` (0=X, 1=Y, 2=Z) that spans `val`.
+fn find_edge_spanning(mesh: &SMesh, axis: usize, val: f32) -> Option<HalfedgeId> {
+    mesh.halfedges().find(|&h| {
+        if h.is_boundary(mesh) { return false; }
+        if h.face().run(mesh).ok().map(|f| f.valence(mesh)).unwrap_or(0) != 4 { return false; }
+        let src = h.src_vert().position(mesh).unwrap_or_default();
+        let dst = h.dst_vert().position(mesh).unwrap_or_default();
+        let dir = (dst - src).normalize();
+        let (src_v, dst_v, dir_v) = match axis {
+            0 => (src.x, dst.x, dir.x),
+            1 => (src.y, dst.y, dir.y),
+            _ => (src.z, dst.z, dir.z),
+        };
+        dir_v.abs() > 0.9 && src_v.min(dst_v) < val - 0.01 && src_v.max(dst_v) > val + 0.01
+    })
+}
 
-    let rot = if facing.z.abs() > 0.5 {
-        let depth_dir = facing.z.signum();
-        Quat::from_rotation_y(if depth_dir > 0.0 { 0.0 } else { PI })
-    } else {
-        let depth_dir = facing.x.signum();
-        Quat::from_rotation_y(if depth_dir > 0.0 { PI / 2.0 } else { -PI / 2.0 })
-    };
-
-    let frame_outer_w = WINDOW_WIDTH + DOOR_FRAME_WIDTH * 2.0;
-    let frame_outer_h = WINDOW_HEIGHT + DOOR_FRAME_WIDTH + WINDOW_HEADER_HEIGHT;
-    let recess_depth = WINDOW_FRAME_DEPTH * 2.5;
-
-    // Build window block in local space (+Z = outward), then rotate+translate at the end.
-    // Start with a cube, inset the front face to create the frame, extrude inward for the recess.
-    let (mut block, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
-    let all = block.select_all();
-    block.scale(all, vec3(frame_outer_w, frame_outer_h, WINDOW_FRAME_DEPTH), Pivot::Origin)?;
-
-    // Find the front face (+Z)
-    let front_face = block.faces_facing(Vec3::Z, 0.1).into_iter().next()
-        .ok_or(SMeshError::DefaultError)?;
-
-    // Inset to create the frame border
-    let inner = block.inset(front_face, 0.12)?;
-
-    // Extrude the inner face inward to create the recess
-    let recessed = block.extrude(inner)?;
-    let recess_verts: Vec<VertexId> = recessed.vertices(&block).collect();
-    for &v in &recess_verts {
-        let pos = v.position(&block)?;
-        block.positions.insert(v, pos + vec3(0.0, 0.0, -recess_depth));
+/// Find a face whose centroid is near `center` and inset+extrude it inward.
+fn inset_window_face(mesh: &mut SMesh, center: Vec3, tolerance: f32, recess: f32) -> SMeshResult<()> {
+    let face = mesh.faces().find(|&f| {
+        let c = mesh.get_face_centroid(f).unwrap_or_default();
+        (c - center).length() < tolerance
+    });
+    if let Some(face) = face {
+        // Compute inward direction from face normal
+        let verts: Vec<Vec3> = face.vertices(mesh).map(|v| v.position(mesh).unwrap()).collect();
+        let normal = (verts[1] - verts[0]).cross(verts[2] - verts[0]).normalize();
+        let inner = mesh.inset(face, 0.1)?;
+        let recessed = mesh.extrude(inner)?;
+        for v in recessed.vertices(mesh).collect::<Vec<_>>() {
+            let pos = v.position(mesh)?;
+            mesh.positions.insert(v, pos - normal * recess);
+        }
     }
+    Ok(())
+}
 
-    // Clear stale normals (inset/extrude invalidated the original face IDs)
-    block.face_normals = None;
-    block.vertex_normals = None;
+/// Perform sorted loop cuts along an axis, finding the right edge for each cut.
+fn do_axis_cuts(mesh: &mut SMesh, axis: usize, cuts: &mut Vec<f32>) -> SMeshResult<()> {
+    cuts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    cuts.dedup_by(|a, b| (*a - *b).abs() < 0.01);
+    for &val in cuts.iter() {
+        if let Some(he) = find_edge_spanning(mesh, axis, val) {
+            let src = he.src_vert().position(mesh)?;
+            let dst = he.dst_vert().position(mesh)?;
+            let (src_v, dst_v) = match axis {
+                0 => (src.x, dst.x),
+                1 => (src.y, dst.y),
+                _ => (src.z, dst.z),
+            };
+            let t = ((val - src_v) / (dst_v - src_v)).clamp(0.01, 0.99);
+            mesh.loop_cut(he, t)?;
+        }
+    }
+    Ok(())
+}
 
-    // Rotate and position
-    let all = block.select_all();
-    block.rotate(all.clone(), rot, Pivot::Origin)?;
-    block.translate(all, position + vec3(0.0, WINDOW_HEADER_HEIGHT * 0.3, 0.0))?;
-    win.combine_with(block)?;
-
-    // Mullions sit inside the recess
-    let mullion_z_offset = -facing.normalize() * (recess_depth * 0.3);
+/// Window trim: sill, header, and mullions (placed at a window position on the wall surface).
+fn make_window_trim(position: Vec3, facing: Vec3, recess: f32) -> SMeshResult<SMesh> {
+    let mut trim = SMesh::new();
+    let rot = if facing.z.abs() > 0.5 {
+        Quat::from_rotation_y(if facing.z > 0.0 { 0.0 } else { PI })
+    } else {
+        Quat::from_rotation_y(if facing.x > 0.0 { PI / 2.0 } else { -PI / 2.0 })
+    };
+    let frame_outer_w = WINDOW_WIDTH + DOOR_FRAME_WIDTH * 2.0;
+    let mullion_offset = -facing.normalize() * (recess * 0.3);
 
     // Vertical mullion
     let (mut vdiv, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = vdiv.select_all();
-    vdiv.scale(all.clone(), vec3(WINDOW_DIVIDER_SIZE, WINDOW_HEIGHT * 0.85, recess_depth * 0.8), Pivot::Origin)?;
+    vdiv.scale(all.clone(), vec3(WINDOW_DIVIDER_SIZE, WINDOW_HEIGHT * 0.85, recess * 0.8), Pivot::Origin)?;
     vdiv.rotate(all.clone(), rot, Pivot::Origin)?;
-    vdiv.translate(all, position + mullion_z_offset)?;
-    win.combine_with(vdiv)?;
+    vdiv.translate(all, position + mullion_offset)?;
+    trim.combine_with(vdiv)?;
 
     // Horizontal mullion
     let (mut hdiv, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = hdiv.select_all();
-    hdiv.scale(all.clone(), vec3(WINDOW_WIDTH * 0.85, WINDOW_DIVIDER_SIZE, recess_depth * 0.8), Pivot::Origin)?;
+    hdiv.scale(all.clone(), vec3(WINDOW_WIDTH * 0.85, WINDOW_DIVIDER_SIZE, recess * 0.8), Pivot::Origin)?;
     hdiv.rotate(all.clone(), rot, Pivot::Origin)?;
-    hdiv.translate(all, position + vec3(0.0, 0.1, 0.0) + mullion_z_offset)?;
-    win.combine_with(hdiv)?;
+    hdiv.translate(all, position + vec3(0.0, 0.1, 0.0) + mullion_offset)?;
+    trim.combine_with(hdiv)?;
 
-    // Window sill (projects outward from wall)
+    // Sill
     let (mut sill, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = sill.select_all();
     sill.scale(all.clone(), vec3(frame_outer_w + 0.06, WINDOW_SILL_HEIGHT, WINDOW_SILL_DEPTH), Pivot::Origin)?;
     sill.rotate(all.clone(), rot, Pivot::Origin)?;
     sill.translate(all, position + vec3(0.0, -WINDOW_HEIGHT / 2.0 - WINDOW_SILL_HEIGHT / 2.0, 0.0))?;
-    win.combine_with(sill)?;
+    trim.combine_with(sill)?;
 
-    // Header / lintel
+    // Header
     let (mut header, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
     let all = header.select_all();
     header.scale(all.clone(), vec3(frame_outer_w + 0.04, WINDOW_HEADER_HEIGHT, WINDOW_HEADER_DEPTH), Pivot::Origin)?;
     header.rotate(all.clone(), rot, Pivot::Origin)?;
     header.translate(all, position + vec3(0.0, WINDOW_HEIGHT / 2.0 + WINDOW_HEADER_HEIGHT / 2.0 + DOOR_FRAME_WIDTH * 0.5, 0.0))?;
-    win.combine_with(header)?;
+    trim.combine_with(header)?;
 
-    Ok(win)
+    Ok(trim)
 }
 
 fn make_door(position: Vec3, facing_z: f32) -> SMeshResult<SMesh> {
@@ -306,20 +325,118 @@ fn generate_house(params: &HouseParameters) -> SMeshResult<SMesh> {
         vec3(wing_offset_x, FOUNDATION_HEIGHT / 2.0, -(params.main_depth - params.wing_depth) / 2.0),
     )?)?;
 
-    // === Main body ===
-    // Walls stop at eave height — roof slopes and gable fills handle everything above
+    // === Main body — loop-cut windows directly into the wall ===
     let eave_height = total_height;
-    mesh.combine_with(make_box(
+    let n_win = params.windows_per_floor;
+    let win_spacing = params.main_width / (n_win as f32 + 1.0);
+    let side_spacing = params.main_depth / 3.0;
+    let recess = WINDOW_FRAME_DEPTH * 2.5;
+
+    let mut main_body = make_box(
         params.main_width, eave_height, params.main_depth,
         vec3(0.0, eave_height / 2.0 + FOUNDATION_HEIGHT, 0.0),
-    )?)?;
+    )?;
 
-    // === Side wing ===
+    // Collect all window center positions for the main body
+    struct WinPos { x: f32, y: f32, face_pos: Vec3, facing: Vec3 }
+    let mut main_windows: Vec<WinPos> = Vec::new();
+    let front_z = params.main_depth / 2.0;
+    let back_z = -params.main_depth / 2.0;
+    let left_x = -params.main_width / 2.0;
+
+    for floor in 0..2 {
+        let wy = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
+        // Front + back windows
+        for i in 0..n_win {
+            let wx = -params.main_width / 2.0 + win_spacing * (i as f32 + 1.0);
+            main_windows.push(WinPos { x: wx, y: wy, face_pos: vec3(wx, wy, front_z), facing: Vec3::Z });
+            main_windows.push(WinPos { x: wx, y: wy, face_pos: vec3(wx, wy, back_z), facing: Vec3::NEG_Z });
+        }
+        // Left side windows
+        for i in 0..2 {
+            let wz = -params.main_depth / 2.0 + side_spacing * (i as f32 + 1.0);
+            main_windows.push(WinPos { x: wz, y: wy, face_pos: vec3(left_x, wy, wz), facing: Vec3::NEG_X });
+        }
+    }
+
+    // Y cuts — window top/bottom edges (shared across all faces)
+    let mut y_cuts: Vec<f32> = main_windows.iter()
+        .flat_map(|w| [w.y - WINDOW_HEIGHT / 2.0, w.y + WINDOW_HEIGHT / 2.0])
+        .collect();
+    do_axis_cuts(&mut main_body, 1, &mut y_cuts)?;
+
+    // X cuts — front/back window column edges
+    let mut x_cuts: Vec<f32> = main_windows.iter()
+        .filter(|w| w.facing.z.abs() > 0.5)
+        .flat_map(|w| [w.x - WINDOW_WIDTH / 2.0, w.x + WINDOW_WIDTH / 2.0])
+        .collect();
+    do_axis_cuts(&mut main_body, 0, &mut x_cuts)?;
+
+    // Z cuts — left side window column edges
+    let mut z_cuts: Vec<f32> = main_windows.iter()
+        .filter(|w| w.facing.x.abs() > 0.5)
+        .flat_map(|w| [w.x - WINDOW_WIDTH / 2.0, w.x + WINDOW_WIDTH / 2.0])
+        .collect();
+    do_axis_cuts(&mut main_body, 2, &mut z_cuts)?;
+
+    // Inset + extrude each window face
+    let tol = WINDOW_WIDTH.min(WINDOW_HEIGHT) * 0.4;
+    for w in &main_windows {
+        inset_window_face(&mut main_body, w.face_pos, tol, recess)?;
+    }
+
+    main_body.face_normals = None;
+    main_body.vertex_normals = None;
+    mesh.combine_with(main_body)?;
+
+    // === Side wing — loop-cut windows ===
     let wing_z = -(params.main_depth - params.wing_depth) / 2.0;
-    mesh.combine_with(make_box(
+
+    let mut wing = make_box(
         params.wing_width, wing_height, params.wing_depth,
         vec3(wing_offset_x, wing_height / 2.0 + FOUNDATION_HEIGHT, wing_z),
-    )?)?;
+    )?;
+
+    let mut wing_windows: Vec<WinPos> = Vec::new();
+    let wing_front_z = wing_z + params.wing_depth / 2.0;
+    let wing_right_x = wing_offset_x + params.wing_width / 2.0;
+    let wing_side_spacing = params.wing_depth / 3.0;
+
+    for floor in 0..2 {
+        let wy = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
+        // Wing front
+        wing_windows.push(WinPos { x: wing_offset_x, y: wy, face_pos: vec3(wing_offset_x, wy, wing_front_z), facing: Vec3::Z });
+        // Wing right side
+        for i in 0..2 {
+            let wz = wing_z - params.wing_depth / 2.0 + wing_side_spacing * (i as f32 + 1.0);
+            wing_windows.push(WinPos { x: wz, y: wy, face_pos: vec3(wing_right_x, wy, wz), facing: Vec3::X });
+        }
+    }
+
+    let mut wy_cuts: Vec<f32> = wing_windows.iter()
+        .flat_map(|w| [w.y - WINDOW_HEIGHT / 2.0, w.y + WINDOW_HEIGHT / 2.0])
+        .collect();
+    do_axis_cuts(&mut wing, 1, &mut wy_cuts)?;
+
+    let mut wx_cuts: Vec<f32> = wing_windows.iter()
+        .filter(|w| w.facing.z.abs() > 0.5)
+        .flat_map(|w| [w.x - WINDOW_WIDTH / 2.0, w.x + WINDOW_WIDTH / 2.0])
+        .collect();
+    do_axis_cuts(&mut wing, 0, &mut wx_cuts)?;
+
+    let mut wz_cuts: Vec<f32> = wing_windows.iter()
+        .filter(|w| w.facing.x.abs() > 0.5)
+        .flat_map(|w| [w.x - WINDOW_WIDTH / 2.0, w.x + WINDOW_WIDTH / 2.0])
+        .collect();
+    do_axis_cuts(&mut wing, 2, &mut wz_cuts)?;
+
+    for w in &wing_windows {
+        inset_window_face(&mut wing, w.face_pos, tol, recess)?;
+    }
+
+    wing.face_normals = None;
+    wing.vertex_normals = None;
+    mesh.combine_with(wing)?;
 
     // === Cornice / trim at eave line (sides only, not gable ends) ===
     // Front and back cornices (run along the depth/sides under the roof slope)
@@ -432,71 +549,9 @@ fn generate_house(params: &HouseParameters) -> SMeshResult<SMesh> {
         mesh.combine_with(gable)?;
     }
 
-    // === Windows - Front face (main body, +Z side) ===
-    let front_z = params.main_depth / 2.0 + WINDOW_FRAME_DEPTH / 2.0;
-    let n_win = params.windows_per_floor;
-    let win_spacing = params.main_width / (n_win as f32 + 1.0);
-
-    for floor in 0..2 {
-        let win_y = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
-        for i in 0..n_win {
-            let win_x = -params.main_width / 2.0 + win_spacing * (i as f32 + 1.0);
-            mesh.combine_with(make_window(
-                vec3(win_x, win_y, front_z),
-                Vec3::Z,
-            )?)?;
-        }
-    }
-
-    // === Windows - Back face (main body, -Z side) ===
-    let back_z = -params.main_depth / 2.0 - WINDOW_FRAME_DEPTH / 2.0;
-    for floor in 0..2 {
-        let win_y = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
-        for i in 0..n_win {
-            let win_x = -params.main_width / 2.0 + win_spacing * (i as f32 + 1.0);
-            mesh.combine_with(make_window(
-                vec3(win_x, win_y, back_z),
-                Vec3::NEG_Z,
-            )?)?;
-        }
-    }
-
-    // === Windows - Left side (main body, -X side) ===
-    let left_x = -params.main_width / 2.0 - WINDOW_FRAME_DEPTH / 2.0;
-    let side_spacing = params.main_depth / 3.0;
-    for floor in 0..2 {
-        let win_y = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
-        for i in 0..2 {
-            let win_z = -params.main_depth / 2.0 + side_spacing * (i as f32 + 1.0);
-            mesh.combine_with(make_window(
-                vec3(left_x, win_y, win_z),
-                Vec3::NEG_X,
-            )?)?;
-        }
-    }
-
-    // === Windows - Wing front (+Z side) ===
-    let wing_front_z = wing_z + params.wing_depth / 2.0 + WINDOW_FRAME_DEPTH / 2.0;
-    for floor in 0..2 {
-        let win_y = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
-        mesh.combine_with(make_window(
-            vec3(wing_offset_x, win_y, wing_front_z),
-            Vec3::Z,
-        )?)?;
-    }
-
-    // === Windows - Wing right side (+X side) ===
-    let wing_right_x = wing_offset_x + params.wing_width / 2.0 + WINDOW_FRAME_DEPTH / 2.0;
-    let wing_side_spacing = params.wing_depth / 3.0;
-    for floor in 0..2 {
-        let win_y = FOUNDATION_HEIGHT + params.story_height * floor as f32 + params.story_height * 0.55;
-        for i in 0..2 {
-            let win_z = wing_z - params.wing_depth / 2.0 + wing_side_spacing * (i as f32 + 1.0);
-            mesh.combine_with(make_window(
-                vec3(wing_right_x, win_y, win_z),
-                Vec3::X,
-            )?)?;
-        }
+    // === Window trim (sills, headers, mullions) for all windows ===
+    for w in main_windows.iter().chain(wing_windows.iter()) {
+        mesh.combine_with(make_window_trim(w.face_pos, w.facing, recess)?)?;
     }
 
     // === Front door ===
