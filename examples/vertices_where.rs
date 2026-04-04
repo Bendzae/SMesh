@@ -9,15 +9,15 @@ use smesh::{
 use primitives::Primitive;
 use transform::Pivot;
 
-/// Select the top vertices of a cube and pull them up to form a peaked roof shape.
+/// Select the top-center vertices of a subdivided cube and pull them up to form a peaked roof.
 fn make_peaked_box() -> SMeshResult<SMesh> {
     let (mut mesh, _) = primitives::Cube {
-        subdivision: glam::U16Vec3::ONE,
+        subdivision: glam::U16Vec3::new(2, 1, 1),
     }
     .generate()?;
 
-    // Select top-center vertices (y > 0 and near x=0)
-    let peak_verts = mesh.vertices_where(|pos| pos.y > 0.0 && pos.x.abs() < 0.1);
+    // With 2 subdivisions on X, there are vertices at x=0 on the top face
+    let peak_verts = mesh.vertices_where(|pos| pos.y > 0.4 && pos.x.abs() < 0.01);
     mesh.translate(peak_verts, vec3(0.0, 0.5, 0.0))?;
 
     mesh.recalculate_normals()?;
