@@ -12,113 +12,71 @@ Generate a 3D mesh matching this description: **$ARGUMENTS**
 
 Before writing any code, read these source files to understand the smesh API:
 
-1. **Primitives** — `src/smesh/primitives.rs` (Cube, Cylinder, Icosphere, Circle, Quad)
-2. **Edit operations** — `src/smesh/edit_operations.rs` (extrude, inset, inset_faces, subdivide, combine_with)
-3. **Transform** — `src/smesh/transform.rs` (translate, scale, rotate, Pivot enum)
-4. **Introspection** — `src/smesh/introspection.rs` (describe, describe_selection, describe_faces)
-5. **Validation** — `src/smesh/validation.rs` (validate)
-6. **Tags** — `src/smesh/tags.rs` (tag, get_tag, take_tag)
-7. **Spatial queries** — `src/smesh/spatial_queries.rs` (faces_facing, nearest_vertex, query_region, raycast)
-8. **Preview rendering** — `src/smesh/preview.rs` (render_previews, save_preview_with_options, PreviewOptions)
-9. **Showcase plugin** — `src/adapters/bevy.rs` (ShowcasePlugin)
-
-**Read `examples/chair.rs` thoroughly** — it is the reference implementation showing the complete pattern: parametric resource with inspector UI, helper functions, generation function, live update system, ShowcasePlugin usage, PanOrbitCamera setup, and tests. Use it as your template for the example file structure, main(), init_system, and update_system.
+1. **Primitives** — `src/smesh/primitives.rs` (Cube, Cylinder, Icosphere, Circle, Quad, Wedge)
+2. **Edit operations** — `src/smesh/edit_operations.rs` (extrude, inset, inset_faces, subdivide, loop_cut, weld_vertices, combine_with)
+3. **Topological operations** — `src/smesh/topological_operations.rs` (insert_vertex, collapse, remove_edge, delete_face)
+4. **Transform** — `src/smesh/transform.rs` (translate, scale, rotate, Pivot enum)
+5. **Spatial queries** — `src/smesh/spatial_queries.rs` (vertices_where, faces_facing, nearest_vertex, query_region, raycast)
+6. **Selection** — `src/smesh/selection.rs` (MeshSelection, resolve_to_vertices/faces/halfedges)
+7. **Tags** — `src/smesh/tags.rs` (tag, get_tag, take_tag)
+8. **Introspection** — `src/smesh/introspection.rs` (describe)
+9. **Validation** — `src/smesh/validation.rs` (validate)
+10. **Preview rendering** — `src/smesh/preview.rs` (save_preview_with_options, PreviewOptions)
+11. **Showcase plugin** — `src/adapters/bevy.rs` (ShowcasePlugin, DebugDrawMode)
 
 Read ALL of these files before writing code. Do not guess at the API.
+
+**Read `examples/chair.rs` thoroughly** — it is the reference for the example file structure: parametric resource with inspector UI, helper functions, generation function, live update system, ShowcasePlugin, PanOrbitCamera, and tests.
+
+Also skim `examples/house.rs` for examples of loop cuts, vertices_where, inset+extrude on existing geometry, and wedge primitives.
 
 ## Step 2: Plan the Geometry
 
 Before coding, write a brief plan:
-- What primitives and dimensions for each part? (use real-world meters)
-- How will parts connect? (separate primitives via `combine_with` is usually cleanest)
+- What is the overall construction approach? Choose based on the object:
+  - **Sculpting from a single primitive** (extrude, inset, loop_cut, vertices_where) works well for organic or monolithic shapes
+  - **Combining separate parts** (combine_with + weld_vertices) works well for mechanical or multi-component objects
+  - **Mix both** as needed — e.g. sculpt each part individually, then combine
+- What are the real-world dimensions in meters?
 - Which parameters should be user-tunable via inspector UI?
 
 ## Step 3: Write the Generation Function
 
-Define these helpers — they make building from separate parts much cleaner:
+Choose your construction techniques based on what fits the shape:
 
+- `extrude` / `inset` — grow or recess regions of a face
+- `loop_cut` — subdivide a mesh at precise positions to create new edge loops for further editing
+- `vertices_where` — select vertices by spatial predicate for targeted transforms
+- `faces_facing` — find faces by normal direction for selective operations
+- `combine_with` + `weld_vertices` — join separate parts and merge coincident vertices at joints
+- `subdivide` — add detail uniformly
+
+After edit operations (inset, extrude, loop_cut) that change topology, clear stale normals before combining:
 ```rust
-fn make_box(width: f32, height: f32, depth: f32, position: Vec3) -> SMeshResult<SMesh> {
-    let (mut part, _) = primitives::Cube { subdivision: glam::U16Vec3::ONE }.generate()?;
-    let all = part.select_all();
-    part.scale(all.clone(), vec3(width, height, depth), Pivot::Origin)?;
-    part.translate(all, position)?;
-    Ok(part)
-}
-
-fn make_cylinder(radius: f32, height: f32, segments: usize, position: Vec3) -> SMeshResult<SMesh> {
-    let (mut cyl, _) = primitives::Cylinder { segments, height, radius }.generate()?;
-    let all = cyl.select_all();
-    cyl.translate(all, position)?;
-    Ok(cyl)
-}
-
-fn make_sphere(radius: f32, subdivisions: usize, position: Vec3) -> SMeshResult<SMesh> {
-    let (mut sphere, _) = primitives::Icosphere { subdivisions }.generate()?;
-    let all = sphere.select_all();
-    sphere.scale(all.clone(), Vec3::splat(radius * 2.0), Pivot::Origin)?;
-    sphere.translate(all, position)?;
-    Ok(sphere)
-}
+mesh.face_normals = None;
+mesh.vertex_normals = None;
 ```
 
-### Key principles
+Call `recalculate_normals()` at the end of generation.
 
-1. **Prefer `combine_with` for separate parts** — building each part as its own primitive and combining produces much cleaner geometry than trying to extrude everything from one mesh.
-2. **Use `inset` then `extrude`** for protrusions that grow from a surface — not extrude+scale, which creates tapered/flared transitions.
-3. **Use `faces_facing()` and spatial queries** to find faces by direction/position instead of tracking IDs.
-4. **Tag important regions** with `mesh.tag(selection, "name")`.
-5. **Call `recalculate_normals()`** at the end.
+When combining many parts, call `weld_vertices(threshold)` at the end to merge coincident vertices — this fixes normals at joints and reduces vertex count.
 
-### Key API patterns:
+## Step 4: Verify with Introspection
 
-```rust
-// Build parts separately and combine
-let mut mesh = SMesh::new();
-mesh.combine_with(make_box(0.5, 0.04, 0.4, vec3(0.0, 0.48, 0.0))?)?;
-mesh.combine_with(make_cylinder(0.02, 0.46, 8, vec3(0.2, 0.23, 0.15))?)?;
-
-// Find faces by direction
-let top_faces = mesh.faces_facing(Vec3::Y, FRAC_PI_4);
-
-// Filter faces by position
-let back_faces: Vec<FaceId> = mesh.faces_facing(Vec3::NEG_Z, FRAC_PI_4)
-    .into_iter()
-    .filter(|f| mesh.get_face_centroid(*f).unwrap().y > 0.5)
-    .collect();
-
-// Inset then extrude for protrusions
-let inner = mesh.inset(face, 0.7)?;  // 0.0=no change, 1.0=collapsed
-let top = mesh.extrude(inner)?;
-mesh.translate(top, Vec3::Y * height)?;
-
-// Rotate a part before combining
-let (mut diamond, _) = primitives::Cube { subdivision: U16Vec3::ONE }.generate()?;
-let all = diamond.select_all();
-diamond.scale(all.clone(), vec3(0.03, 0.03, 0.02), Pivot::Origin)?;
-diamond.rotate(all.clone(), Quat::from_rotation_z(PI / 4.0), Pivot::Origin)?;
-diamond.translate(all, position)?;
-mesh.combine_with(diamond)?;
-
-mesh.recalculate_normals()?;
-```
-
-## Step 4: Verify with Introspection (CRITICAL)
-
-After each major construction step, print and CHECK the describe output:
+After each major construction step, print and check the describe output:
 
 ```rust
 eprintln!("=== After <step> ===\n{}", mesh.describe());
 
-// Assert dimensions match your intent
-assert!((report.dimensions.x - EXPECTED_WIDTH).abs() < 0.01,
+let report = mesh.describe();
+assert!((report.dimensions.x - EXPECTED_WIDTH).abs() < 0.1,
     "Width should be ~{}, got {}", EXPECTED_WIDTH, report.dimensions.x);
 
 let validation = mesh.validate();
 eprintln!("{}", validation);
 ```
 
-## Step 5: Visual Verification (CRITICAL)
+## Step 5: Visual Verification
 
 Render preview images with wireframe and **read the image files** to visually inspect:
 
@@ -150,14 +108,12 @@ Follow the structure in `examples/chair.rs` exactly for:
 3. Read the preview images at `/tmp/*.png` to visually verify
 4. If proportions are wrong → adjust dimensions, re-run
 5. If topology is broken → check validate() output, fix
-6. If parts are missing → check faces_facing() filter conditions
+6. If parts are missing → check spatial query filter conditions
 7. Repeat until the mesh matches the description
 
 ## Common Pitfalls
 
-- **Don't use extrude + scale for protrusions** — creates flared transitions. Use inset + extrude.
-- **Don't track FaceIds through long chains** — use `faces_facing()` and spatial queries.
+- **Don't use extrude + scale for protrusions** — creates flared transitions. Use inset + extrude instead.
+- **Don't track FaceIds through long operation chains** — use `faces_facing()` and spatial queries to re-find faces.
 - **Don't set camera position via Transform with PanOrbitCamera** — set `focus`, `radius`, `yaw`, `pitch` fields instead.
-- **Prefer `combine_with`** for separate parts — cleaner geometry than extruding everything from one mesh.
 - **Don't forget `recalculate_normals()`** — shading will be wrong without it.
-- **Use helper functions** (`make_box`, `make_cylinder`, `make_sphere`) to reduce code and errors.
