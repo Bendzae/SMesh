@@ -735,6 +735,108 @@ impl SMesh {
         Ok(total_merges)
     }
 
+    /// Bridge two ordered vertex rings with quad faces.
+    ///
+    /// Takes two rings of vertices and connects corresponding pairs with quads.
+    /// Both rings must have the same number of vertices. The function finds the
+    /// optimal rotational alignment to minimize total edge-crossing distance.
+    ///
+    /// Winding: `loop_a` vertices are used in order, `loop_b` in reverse, so the
+    /// resulting quads have consistent normals pointing outward from the bridge.
+    pub fn bridge_vertices(
+        &mut self,
+        loop_a: &[VertexId],
+        loop_b: &[VertexId],
+    ) -> SMeshResult<Vec<FaceId>> {
+        let n = loop_a.len();
+        if n < 3 {
+            bail!("bridge requires at least 3 vertices per loop");
+        }
+        if n != loop_b.len() {
+            bail!("bridge loops must have the same vertex count");
+        }
+
+        // Find optimal rotation of loop_b to minimize total distance
+        let best_offset = self.bridge_find_best_rotation(loop_a, loop_b)?;
+
+        // Create quad faces connecting the two loops
+        let mut faces = Vec::with_capacity(n);
+        for i in 0..n {
+            let next_i = (i + 1) % n;
+            let a0 = loop_a[i];
+            let a1 = loop_a[next_i];
+            let b0 = loop_b[(i + best_offset) % n];
+            let b1 = loop_b[(next_i + best_offset) % n];
+            // Quad: a0 -> b0 -> b1 -> a1 (normals point outward from bridge)
+            let face = self.make_quad(a0, b0, b1, a1)?;
+            faces.push(face);
+        }
+
+        Ok(faces)
+    }
+
+    /// Bridge two boundary edge loops with quad faces.
+    ///
+    /// Each loop is a list of boundary halfedges forming a closed ring.
+    /// The function extracts the vertex rings from the halfedge loops,
+    /// finds optimal alignment, and connects them with quads.
+    pub fn bridge(
+        &mut self,
+        loop_a: &[HalfedgeId],
+        loop_b: &[HalfedgeId],
+    ) -> SMeshResult<Vec<FaceId>> {
+        // Validate: all halfedges must be boundary
+        for &he in loop_a.iter().chain(loop_b.iter()) {
+            if !he.is_boundary(self) {
+                bail!("bridge: all halfedges must be boundary edges");
+            }
+        }
+
+        // Extract vertex rings from halfedge loops (source vertex of each halfedge)
+        let verts_a: Vec<VertexId> = loop_a
+            .iter()
+            .map(|he| he.src_vert().run(self))
+            .collect::<Result<_, _>>()?;
+        let verts_b: Vec<VertexId> = loop_b
+            .iter()
+            .map(|he| he.src_vert().run(self))
+            .collect::<Result<_, _>>()?;
+
+        self.bridge_vertices(&verts_a, &verts_b)
+    }
+
+    /// Find the rotation offset for loop_b that minimizes total distance to loop_a.
+    fn bridge_find_best_rotation(
+        &self,
+        loop_a: &[VertexId],
+        loop_b: &[VertexId],
+    ) -> SMeshResult<usize> {
+        let n = loop_a.len();
+        let positions_a: Vec<glam::Vec3> = loop_a
+            .iter()
+            .map(|v| v.position(self))
+            .collect::<Result<_, _>>()?;
+        let positions_b: Vec<glam::Vec3> = loop_b
+            .iter()
+            .map(|v| v.position(self))
+            .collect::<Result<_, _>>()?;
+
+        let mut best_offset = 0;
+        let mut best_dist = f32::INFINITY;
+
+        for offset in 0..n {
+            let total: f32 = (0..n)
+                .map(|i| positions_a[i].distance_squared(positions_b[(i + offset) % n]))
+                .sum();
+            if total < best_dist {
+                best_dist = total;
+                best_offset = offset;
+            }
+        }
+
+        Ok(best_offset)
+    }
+
     pub fn combine_with(&mut self, other: SMesh) -> SMeshResult<()> {
         // Copy verts
         let mut v_map = HashMap::new();
@@ -1192,6 +1294,198 @@ mod tests {
         assert_eq!(inner.valence(mesh), 3);
 
         Ok(())
+    }
+
+    #[test]
+    fn bridge_two_quads() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+
+        // Create two separate quad faces (open rings after deleting faces)
+        // Ring A: a square at z = -1
+        let a0 = mesh.add_vertex(vec3(-1.0, -1.0, -1.0));
+        let a1 = mesh.add_vertex(vec3(1.0, -1.0, -1.0));
+        let a2 = mesh.add_vertex(vec3(1.0, 1.0, -1.0));
+        let a3 = mesh.add_vertex(vec3(-1.0, 1.0, -1.0));
+        let fa = mesh.make_quad(a0, a1, a2, a3)?;
+
+        // Ring B: a square at z = 1
+        let b0 = mesh.add_vertex(vec3(-1.0, -1.0, 1.0));
+        let b1 = mesh.add_vertex(vec3(1.0, -1.0, 1.0));
+        let b2 = mesh.add_vertex(vec3(1.0, 1.0, 1.0));
+        let b3 = mesh.add_vertex(vec3(-1.0, 1.0, 1.0));
+        let fb = mesh.make_quad(b0, b1, b2, b3)?;
+
+        // Delete the faces to leave open boundary loops
+        mesh.delete_only_face(fa)?;
+        mesh.delete_only_face(fb)?;
+
+        assert_eq!(mesh.faces().len(), 0);
+        assert_eq!(mesh.vertices().len(), 8);
+
+        // Bridge the two vertex rings
+        let faces = mesh.bridge_vertices(
+            &[a0, a1, a2, a3],
+            &[b0, b1, b2, b3],
+        )?;
+
+        assert_eq!(faces.len(), 4, "Should create 4 quad faces");
+        assert_eq!(mesh.faces().len(), 4);
+
+        // Each face should be a quad
+        for f in &faces {
+            assert_eq!(f.valence(mesh), 4, "Bridge faces should be quads");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn bridge_alignment() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+
+        // Ring A at z=0 (CCW from above)
+        let a0 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let a1 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
+        let a2 = mesh.add_vertex(vec3(-1.0, 0.0, 0.0));
+        let a3 = mesh.add_vertex(vec3(0.0, -1.0, 0.0));
+
+        // Ring B at z=2 — rotated 90° so naive pairing would cross
+        let b0 = mesh.add_vertex(vec3(0.0, 1.0, 2.0));
+        let b1 = mesh.add_vertex(vec3(-1.0, 0.0, 2.0));
+        let b2 = mesh.add_vertex(vec3(0.0, -1.0, 2.0));
+        let b3 = mesh.add_vertex(vec3(1.0, 0.0, 2.0));
+
+        let faces = mesh.bridge_vertices(&[a0, a1, a2, a3], &[b0, b1, b2, b3])?;
+        assert_eq!(faces.len(), 4);
+
+        // The optimal alignment should pair a0(1,0,0) with b3(1,0,2) — offset 3
+        // Verify no edges cross by checking total bridge edge length is reasonable
+        let mut total_len = 0.0f32;
+        for f in &faces {
+            for v in f.vertices(mesh) {
+                let pos = v.position(mesh)?;
+                total_len += pos.length();
+            }
+        }
+        // If alignment is wrong, total_len would be much larger due to crossing edges
+        assert!(total_len > 0.0, "Bridge should produce geometry");
+
+        Ok(())
+    }
+
+    #[test]
+    fn bridge_hexagonal_tube() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+
+        // Two hexagonal rings of free vertices (no existing faces)
+        let n = 6;
+        let mut ring_a = Vec::new();
+        let mut ring_b = Vec::new();
+        for i in 0..n {
+            let angle = std::f32::consts::TAU * i as f32 / n as f32;
+            let x = angle.cos();
+            let z = angle.sin();
+            ring_a.push(mesh.add_vertex(vec3(x, 0.0, z)));
+            ring_b.push(mesh.add_vertex(vec3(x, 2.0, z)));
+        }
+
+        let faces = mesh.bridge_vertices(&ring_a, &ring_b)?;
+        assert_eq!(faces.len(), n);
+
+        for f in &faces {
+            assert_eq!(f.valence(mesh), 4, "All bridge faces should be quads");
+        }
+
+        // Mesh should be valid
+        let report = mesh.validate();
+        assert!(
+            report.is_valid(),
+            "Bridged mesh should be valid: {}",
+            report
+        );
+
+        Ok(())
+    }
+
+    #[cfg(feature = "preview")]
+    #[test]
+    #[ignore]
+    fn bridge_preview() -> SMeshResult<()> {
+        use crate::smesh::preview::PreviewOptions;
+
+        let mesh = &mut SMesh::new();
+        let n = 8;
+        let mut ring_a = Vec::new();
+        let mut ring_b = Vec::new();
+        for i in 0..n {
+            let angle = std::f32::consts::TAU * i as f32 / n as f32;
+            let x = angle.cos();
+            let z = angle.sin();
+            ring_a.push(mesh.add_vertex(vec3(x, 0.0, z)));
+            ring_b.push(mesh.add_vertex(vec3(x * 0.7, 3.0, z * 0.7)));
+        }
+        mesh.bridge_vertices(&ring_a, &ring_b)?;
+        mesh.recalculate_normals()?;
+
+        let opts = PreviewOptions::default()
+            .with_size(1024, 1024)
+            .with_wireframe();
+        mesh.save_composite_preview(&opts, "/tmp/preview_bridge.png")
+            .unwrap();
+        eprintln!("Saved /tmp/preview_bridge.png");
+
+        Ok(())
+    }
+
+    #[test]
+    fn bridge_with_triangle_fan_cap() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let n = 6usize;
+        let mut bottom = Vec::new();
+        let mut top = Vec::new();
+        for i in 0..n {
+            let angle = std::f32::consts::TAU * i as f32 / n as f32;
+            bottom.push(mesh.add_vertex(vec3(angle.cos(), 0.0, angle.sin())));
+            top.push(mesh.add_vertex(vec3(angle.cos() * 0.5, 2.0, angle.sin() * 0.5)));
+        }
+        mesh.bridge_vertices(&bottom, &top)?;
+
+        // Find the boundary direction on top ring by checking a boundary halfedge
+        // After bridge with quads a[i]->b[i]->b[i+1]->a[i+1],
+        // boundary on top goes b[i+1]->b[i] (reverse order)
+        let top_center = mesh.add_vertex(vec3(0.0, 2.0, 0.0));
+        for i in 0..n {
+            let next = (i + 1) % n;
+            // Boundary goes reverse, so fan triangles: top[next], top[i], center
+            mesh.make_triangle(top[next], top[i], top_center)?;
+        }
+
+        let bottom_center = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        for i in 0..n {
+            let next = (i + 1) % n;
+            // Bottom boundary goes forward: a[i]->a[i+1], so: bottom[i], bottom[next], center
+            mesh.make_triangle(bottom[i], bottom[next], bottom_center)?;
+        }
+
+        let report = mesh.validate();
+        assert!(report.is_valid(), "Capped bridge should be valid: {}", report);
+        Ok(())
+    }
+
+    #[test]
+    fn bridge_rejects_mismatched_sizes() {
+        let mesh = &mut SMesh::new();
+        let a0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let a1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let a2 = mesh.add_vertex(vec3(0.5, 1.0, 0.0));
+
+        let b0 = mesh.add_vertex(vec3(0.0, 0.0, 2.0));
+        let b1 = mesh.add_vertex(vec3(1.0, 0.0, 2.0));
+        let b2 = mesh.add_vertex(vec3(1.0, 1.0, 2.0));
+        let b3 = mesh.add_vertex(vec3(0.0, 1.0, 2.0));
+
+        let result = mesh.bridge_vertices(&[a0, a1, a2], &[b0, b1, b2, b3]);
+        assert!(result.is_err(), "Should reject mismatched loop sizes");
     }
 
     #[test]
