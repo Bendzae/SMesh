@@ -3,6 +3,44 @@ use glam::{Quat, Vec3};
 use itertools::Itertools;
 use selection::MeshSelection;
 
+/// Falloff curve for proportional editing.
+#[derive(Debug, Clone, Copy)]
+pub enum Falloff {
+    /// Weight decreases linearly from 1.0 at center to 0.0 at radius.
+    Linear,
+    /// Smooth hermite interpolation (smoothstep).
+    Smooth,
+    /// Sharp falloff — strong near center, drops quickly.
+    Sharp,
+    /// Spherical falloff — gentle near center, steeper at edges.
+    Sphere,
+    /// Constant weight of 1.0 within radius.
+    Constant,
+}
+
+impl Falloff {
+    /// Compute the weight for a normalized distance t (0.0 = at center, 1.0 = at radius).
+    /// Returns 0.0 for t >= 1.0.
+    pub fn weight(&self, t: f32) -> f32 {
+        if t >= 1.0 {
+            return 0.0;
+        }
+        if t <= 0.0 {
+            return 1.0;
+        }
+        match self {
+            Falloff::Linear => 1.0 - t,
+            Falloff::Smooth => {
+                let s = 1.0 - t;
+                s * s * (3.0 - 2.0 * s) // smoothstep
+            }
+            Falloff::Sharp => 1.0 - t * t,
+            Falloff::Sphere => (1.0 - t * t).sqrt(),
+            Falloff::Constant => 1.0,
+        }
+    }
+}
+
 /// Pivot point to use for transformations
 pub enum Pivot {
     /// Use the origin (0,0,0) as the pivot point
@@ -133,6 +171,95 @@ impl SMesh {
 
         let center = sum / vertices.len() as f32;
         Ok(center)
+    }
+
+    /// Translate vertices with proportional falloff from a center point.
+    ///
+    /// Vertices within `radius` of `center` are translated by `translation * weight`,
+    /// where weight decreases from 1.0 at center to 0.0 at radius according to
+    /// the falloff curve.
+    pub fn translate_proportional(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        falloff: Falloff,
+        translation: Vec3,
+    ) -> SMeshResult<&mut SMesh> {
+        let radius_sq = radius * radius;
+        let verts: Vec<VertexId> = self.vertices().collect();
+
+        for v in verts {
+            let pos = v.position(self)?;
+            let dist_sq = (pos - center).length_squared();
+            if dist_sq >= radius_sq {
+                continue;
+            }
+            let t = dist_sq.sqrt() / radius;
+            let w = falloff.weight(t);
+            self.positions.insert(v, pos + translation * w);
+        }
+
+        Ok(self)
+    }
+
+    /// Scale vertices with proportional falloff from a center point.
+    ///
+    /// Vertices within `radius` of `center` are scaled by `lerp(1, scale, weight)`
+    /// around `center`.
+    pub fn scale_proportional(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        falloff: Falloff,
+        scale: Vec3,
+    ) -> SMeshResult<&mut SMesh> {
+        let radius_sq = radius * radius;
+        let verts: Vec<VertexId> = self.vertices().collect();
+
+        for v in verts {
+            let pos = v.position(self)?;
+            let dist_sq = (pos - center).length_squared();
+            if dist_sq >= radius_sq {
+                continue;
+            }
+            let t = dist_sq.sqrt() / radius;
+            let w = falloff.weight(t);
+            let effective_scale = Vec3::ONE.lerp(scale, w);
+            let offset = pos - center;
+            self.positions.insert(v, center + offset * effective_scale);
+        }
+
+        Ok(self)
+    }
+
+    /// Rotate vertices with proportional falloff from a center point.
+    ///
+    /// Vertices within `radius` of `center` are rotated by `slerp(identity, rotation, weight)`
+    /// around `center`.
+    pub fn rotate_proportional(
+        &mut self,
+        center: Vec3,
+        radius: f32,
+        falloff: Falloff,
+        rotation: Quat,
+    ) -> SMeshResult<&mut SMesh> {
+        let radius_sq = radius * radius;
+        let verts: Vec<VertexId> = self.vertices().collect();
+
+        for v in verts {
+            let pos = v.position(self)?;
+            let dist_sq = (pos - center).length_squared();
+            if dist_sq >= radius_sq {
+                continue;
+            }
+            let t = dist_sq.sqrt() / radius;
+            let w = falloff.weight(t);
+            let effective_rot = Quat::IDENTITY.slerp(rotation, w);
+            let offset = pos - center;
+            self.positions.insert(v, center + effective_rot * offset);
+        }
+
+        Ok(self)
     }
 
     fn scale_around<S: Into<MeshSelection>>(
@@ -390,6 +517,86 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn translate_proportional_basic() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::splat(3),
+        }
+        .generate()?;
+
+        // Pull the top center upward with smooth falloff
+        mesh.translate_proportional(
+            vec3(0.0, 1.0, 0.0),
+            2.0,
+            Falloff::Smooth,
+            vec3(0.0, 1.0, 0.0),
+        )?;
+
+        // The vertex closest to (0,1,0) should have moved the most
+        let (top_v, _) = mesh.nearest_vertex(vec3(0.0, 2.0, 0.0)).unwrap();
+        let top_pos = top_v.position(&mesh)?;
+        assert!(top_pos.y > 1.2, "Top vertex should have moved up, got y={}", top_pos.y);
+
+        // A vertex far from center should move less than the top vertex
+        let (far_v, _) = mesh.nearest_vertex(vec3(0.0, -1.0, 0.0)).unwrap();
+        let far_pos = far_v.position(&mesh)?;
+        assert!(far_pos.y < top_pos.y, "Bottom vertex should move less than top");
+
+        Ok(())
+    }
+
+    #[test]
+    fn proportional_outside_radius_untouched() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        let positions_before: Vec<(VertexId, Vec3)> = mesh
+            .vertices()
+            .map(|v| (v, v.position(&mesh).unwrap()))
+            .collect();
+
+        // Tiny radius centered far away — should affect nothing
+        mesh.translate_proportional(
+            vec3(100.0, 0.0, 0.0),
+            0.1,
+            Falloff::Linear,
+            vec3(0.0, 5.0, 0.0),
+        )?;
+
+        for (v, before) in &positions_before {
+            let after = v.position(&mesh)?;
+            assert!((*before - after).length() < 1e-6);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn falloff_weights_correct() {
+        // At center (t=0), all falloffs return 1.0
+        for falloff in [Falloff::Linear, Falloff::Smooth, Falloff::Sharp, Falloff::Sphere, Falloff::Constant] {
+            assert!((falloff.weight(0.0) - 1.0).abs() < 1e-6, "{:?} at t=0", falloff);
+        }
+        // At edge (t=1), all return 0.0 except Constant which has already been cut off
+        for falloff in [Falloff::Linear, Falloff::Smooth, Falloff::Sharp, Falloff::Sphere] {
+            assert!((falloff.weight(1.0)).abs() < 1e-6, "{:?} at t=1", falloff);
+        }
+        // Beyond radius (t>1), all return 0.0
+        for falloff in [Falloff::Linear, Falloff::Smooth, Falloff::Sharp, Falloff::Sphere, Falloff::Constant] {
+            assert!((falloff.weight(1.5)).abs() < 1e-6, "{:?} at t=1.5", falloff);
+        }
+        // Sharp and Sphere should be > Linear at t=0.7 (they hold weight longer)
+        let t = 0.7;
+        assert!(Falloff::Sharp.weight(t) > Falloff::Linear.weight(t));
+        assert!(Falloff::Sphere.weight(t) > Falloff::Linear.weight(t));
     }
 
     #[test]
