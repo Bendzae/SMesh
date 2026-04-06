@@ -579,6 +579,100 @@ impl SMesh {
     /// Cleans up degenerate edges and faces after merging.
     ///
     /// Returns the number of vertex merges performed.
+    /// Merge multiple vertices into a single vertex at the given position.
+    ///
+    /// All halfedge references to the merged vertices are rerouted to the
+    /// surviving vertex. Degenerate edges and faces created by the merge
+    /// are cleaned up automatically. Returns the surviving vertex ID.
+    pub fn merge_vertices(
+        &mut self,
+        vertices: &[VertexId],
+        target: glam::Vec3,
+    ) -> SMeshResult<VertexId> {
+        if vertices.is_empty() {
+            bail!("merge_vertices requires at least one vertex");
+        }
+        if vertices.len() == 1 {
+            self.positions.insert(vertices[0], target);
+            return Ok(vertices[0]);
+        }
+
+        // First vertex is the representative / survivor
+        let rep = vertices[0];
+        self.positions.insert(rep, target);
+
+        // Reroute all other vertices to the representative
+        for &v in &vertices[1..] {
+            // Reroute all halfedges pointing TO v (he.vertex == v)
+            let hes_to_reroute: Vec<HalfedgeId> = self
+                .halfedges()
+                .filter(|&he| {
+                    self.connectivity
+                        .halfedges
+                        .get(he)
+                        .map(|h| h.vertex == v)
+                        .unwrap_or(false)
+                })
+                .collect();
+
+            for he in hes_to_reroute {
+                self.connectivity.halfedges.get_mut(he).unwrap().vertex = rep;
+            }
+
+            // Transfer outgoing halfedge if needed
+            if let Ok(outgoing) = v.halfedge().run(self) {
+                if rep.halfedge().run(self).is_err() || rep.is_isolated(self) {
+                    self.get_mut(rep).set_halfedge(Some(outgoing))?;
+                }
+            }
+
+            // Delete the old vertex
+            self.positions.remove(v);
+            self.connectivity.vertices.remove(v);
+        }
+
+        // Clean up degenerate edges (src == dst)
+        let degenerate_edges: Vec<HalfedgeId> = self
+            .halfedges()
+            .filter(|&he| {
+                let dst = self.connectivity.halfedges.get(he).map(|h| h.vertex);
+                let src = he
+                    .opposite()
+                    .run(self)
+                    .ok()
+                    .and_then(|opp| self.connectivity.halfedges.get(opp).map(|h| h.vertex));
+                dst.is_some() && dst == src
+            })
+            .collect();
+
+        for he in degenerate_edges {
+            if self.halfedges().any(|h| h == he) {
+                self.delete_only_edge(he)?;
+            }
+        }
+
+        // Remove degenerate faces (faces with duplicate vertices or < 3 verts)
+        let degenerate_faces: Vec<FaceId> = self
+            .faces()
+            .filter(|&f| {
+                let verts: Vec<VertexId> = f.vertices(self).collect();
+                let unique: HashSet<VertexId> = verts.iter().copied().collect();
+                unique.len() < verts.len() || verts.len() < 3
+            })
+            .collect();
+
+        for f in degenerate_faces {
+            if self.faces().any(|face| face == f) {
+                self.delete_only_face(f)?;
+            }
+        }
+
+        // Adjust outgoing halfedge for the representative
+        let _ = self.get_mut(rep).adjust_outgoing_halfedge();
+
+        Ok(rep)
+    }
+
     pub fn weld_vertices(&mut self, threshold: f32) -> SMeshResult<usize> {
         let threshold_sq = threshold * threshold;
         let verts: Vec<VertexId> = self.vertices().collect();
@@ -1469,6 +1563,109 @@ mod tests {
 
         let report = mesh.validate();
         assert!(report.is_valid(), "Capped bridge should be valid: {}", report);
+        Ok(())
+    }
+
+    #[test]
+    fn merge_vertices_triangle_fan_cap() -> SMeshResult<()> {
+        // Bridge a tube, then cap it by merging the top ring into a center point
+        let mesh = &mut SMesh::new();
+        let n = 6usize;
+        let mut bottom = Vec::new();
+        let mut top = Vec::new();
+        for i in 0..n {
+            let angle = std::f32::consts::TAU * i as f32 / n as f32;
+            bottom.push(mesh.add_vertex(vec3(angle.cos(), 0.0, angle.sin())));
+            top.push(mesh.add_vertex(vec3(angle.cos() * 0.5, 2.0, angle.sin() * 0.5)));
+        }
+        mesh.bridge_vertices(&bottom, &top)?;
+
+        // Cap top: extrude-like approach — create new ring at same position, then merge
+        // Actually simpler: just bridge to a duplicate ring, then merge the duplicates
+        // Simplest: create cap faces first, then merge center
+        let top_center = mesh.add_vertex(vec3(0.0, 2.0, 0.0));
+        for i in 0..n {
+            let next = (i + 1) % n;
+            mesh.make_triangle(top[next], top[i], top_center)?;
+        }
+
+        let verts_before = mesh.vertices().count();
+        assert_eq!(verts_before, n * 2 + 1); // bottom + top + center
+
+        // Now test merge_vertices by merging bottom ring to center
+        let bottom_center = vec3(0.0, 0.0, 0.0);
+        let survivor = mesh.merge_vertices(&bottom, bottom_center)?;
+
+        // Should have lost n-1 vertices (all bottom verts merged into one)
+        assert_eq!(mesh.vertices().count(), verts_before - (n - 1));
+
+        // Survivor should be at the target position
+        let pos = survivor.position(mesh)?;
+        assert!((pos - bottom_center).length() < 0.001);
+
+        Ok(())
+    }
+
+    #[test]
+    fn cap_with_extrude_and_merge() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let n = 8usize;
+        let mut bottom = Vec::new();
+        let mut top = Vec::new();
+        for i in 0..n {
+            let angle = std::f32::consts::TAU * i as f32 / n as f32;
+            bottom.push(mesh.add_vertex(vec3(angle.cos(), 0.0, angle.sin())));
+            top.push(mesh.add_vertex(vec3(angle.cos() * 0.5, 3.0, angle.sin() * 0.5)));
+        }
+        mesh.bridge_vertices(&bottom, &top)?;
+
+        // Cap bottom by extruding each boundary edge individually, then merging
+        let mut new_verts = Vec::new();
+        for i in 0..n {
+            let boundary_he = bottom[i]
+                .halfedges(mesh)
+                .find(|he| he.is_boundary(mesh))
+                .unwrap();
+            let new_edge = mesh.extrude_edge(boundary_he)?;
+            new_verts.push(new_edge.src_vert().run(mesh)?);
+        }
+
+        mesh.merge_vertices(&new_verts, vec3(0.0, 0.0, 0.0))?;
+        mesh.recalculate_normals()?;
+
+        // Should have: 8 bridge quads + 8 cap triangles = 16 faces, top still open
+        assert_eq!(mesh.faces().count(), n * 2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn merge_vertices_single() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v = mesh.add_vertex(vec3(1.0, 2.0, 3.0));
+        let target = vec3(0.0, 0.0, 0.0);
+        let result = mesh.merge_vertices(&[v], target)?;
+        assert_eq!(result, v);
+        assert!((v.position(mesh)? - target).length() < 0.001);
+        Ok(())
+    }
+
+    #[test]
+    fn merge_vertices_on_quad() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
+        mesh.make_quad(v0, v1, v2, v3)?;
+
+        // Merge v2 and v3 — quad becomes a triangle
+        let center = vec3(0.5, 1.0, 0.0);
+        mesh.merge_vertices(&[v2, v3], center)?;
+
+        // The quad should have become a triangle (or been cleaned up)
+        assert_eq!(mesh.vertices().count(), 3);
+
         Ok(())
     }
 
