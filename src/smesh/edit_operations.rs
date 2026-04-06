@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use glam::Vec3;
 use itertools::Itertools;
 use slotmap::SecondaryMap;
 
@@ -417,6 +418,249 @@ impl SMesh {
         }
 
         Ok(selection)
+    }
+
+    /// Catmull-Clark smooth subdivision.
+    ///
+    /// Subdivides the mesh topology (same as `subdivide`) but positions new and
+    /// existing vertices using Catmull-Clark weighting rules to approximate a
+    /// smooth limit surface. Supports multiple iterations.
+    ///
+    /// For quad-dominant meshes this produces the standard CC surface. Triangle
+    /// faces are subdivided into quads (with a center vertex), so repeated
+    /// iterations converge to all-quads.
+    pub fn smooth_subdivide<S: Into<MeshSelection> + Clone>(
+        &mut self,
+        selection: S,
+        iterations: usize,
+    ) -> SMeshResult<MeshSelection> {
+        let mut sel: MeshSelection = selection.into();
+        for _ in 0..iterations {
+            sel = self.smooth_subdivide_once(sel)?;
+        }
+        Ok(sel)
+    }
+
+    /// Single iteration of Catmull-Clark smooth subdivision.
+    fn smooth_subdivide_once<S: Into<MeshSelection>>(
+        &mut self,
+        selection: S,
+    ) -> SMeshResult<MeshSelection> {
+        let s: MeshSelection = selection.into();
+        let faces: Vec<FaceId> = s.clone().resolve_to_faces(self)?.into_iter().collect();
+        let halfedges: Vec<HalfedgeId> = s.clone().resolve_to_halfedges(self)?.into_iter().collect();
+
+        // --- Phase 1: Precompute Catmull-Clark positions ---
+
+        // 1a. Face points: centroid of each face
+        let mut face_points: HashMap<FaceId, Vec3> = HashMap::new();
+        for &f in &faces {
+            face_points.insert(f, self.get_face_centroid(f)?);
+        }
+
+        // 1b. Edge points: average of (edge midpoint, adjacent face points)
+        // For each undirected edge, compute the CC edge point.
+        let mut edge_points: HashMap<(HalfedgeId, HalfedgeId), Vec3> = HashMap::new();
+        let mut he_seen: HashSet<HalfedgeId> = HashSet::new();
+        for &he in &halfedges {
+            if he_seen.contains(&he) {
+                continue;
+            }
+            let opp = he.opposite().run(self)?;
+            he_seen.insert(he);
+            he_seen.insert(opp);
+
+            let p0 = he.src_vert().position(self)?;
+            let p1 = he.dst_vert().position(self)?;
+            let edge_mid = 0.5 * (p0 + p1);
+
+            // Get adjacent face points
+            let f0 = he.face().run(self).ok().and_then(|f| face_points.get(&f));
+            let f1 = opp.face().run(self).ok().and_then(|f| face_points.get(&f));
+
+            let edge_point = match (f0, f1) {
+                (Some(&fp0), Some(&fp1)) => 0.25 * (p0 + p1 + fp0 + fp1),
+                _ => edge_mid, // boundary edge: just use midpoint
+            };
+
+            let key = if he < opp { (he, opp) } else { (opp, he) };
+            edge_points.insert(key, edge_point);
+        }
+
+        // 1c. New positions for original vertices using CC vertex rule:
+        //     new_pos = (Q/n + 2R/n + S(n-3)/n)
+        //     Q = avg of adjacent face points
+        //     R = avg of adjacent edge midpoints
+        //     S = original position
+        //     n = valence
+        let mut original_verts: HashSet<VertexId> = HashSet::new();
+        for &f in &faces {
+            for v in f.vertices(self) {
+                original_verts.insert(v);
+            }
+        }
+
+        let mut vertex_new_positions: HashMap<VertexId, Vec3> = HashMap::new();
+        for &v in &original_verts {
+            if v.is_boundary(self) {
+                // Boundary vertex: average of adjacent boundary edge midpoints and original
+                let mut boundary_mids = Vec::new();
+                for he in v.halfedges(self) {
+                    if he.is_boundary(self) {
+                        let dst = he.dst_vert().position(self)?;
+                        let src = v.position(self)?;
+                        boundary_mids.push(0.5 * (src + dst));
+                    }
+                }
+                if boundary_mids.len() >= 2 {
+                    let r: Vec3 =
+                        boundary_mids.iter().copied().sum::<Vec3>() / boundary_mids.len() as f32;
+                    let s = v.position(self)?;
+                    vertex_new_positions.insert(v, 0.5 * r + 0.5 * s);
+                }
+                continue;
+            }
+
+            let s = v.position(self)?;
+            let n = v.vertices(self).count() as f32;
+            if n < 1.0 {
+                continue;
+            }
+
+            // Q: average of adjacent face points
+            let adj_faces: Vec<Vec3> = v
+                .faces(self)
+                .filter_map(|f| face_points.get(&f))
+                .copied()
+                .collect();
+            if adj_faces.is_empty() {
+                continue;
+            }
+            let q = adj_faces.iter().copied().sum::<Vec3>() / adj_faces.len() as f32;
+
+            // R: average of adjacent edge midpoints
+            let adj_edge_mids: Vec<Vec3> = v
+                .vertices(self)
+                .filter_map(|nb| {
+                    let nb_pos = nb.position(self).ok()?;
+                    Some(0.5 * (s + nb_pos))
+                })
+                .collect();
+            let r = adj_edge_mids.iter().copied().sum::<Vec3>() / adj_edge_mids.len().max(1) as f32;
+
+            let new_pos = q / n + 2.0 * r / n + s * (n - 3.0) / n;
+            vertex_new_positions.insert(v, new_pos);
+        }
+
+        // --- Phase 2: Run topology subdivision (same as subdivide) ---
+
+        let face_corners: HashMap<FaceId, VertexId> = self
+            .faces()
+            .map(|f| (f, f.halfedge().src_vert().run(self).unwrap()))
+            .collect();
+
+        // Map from inserted edge-split vertex to its precomputed edge point
+        let mut edge_vertex_positions: HashMap<VertexId, Vec3> = HashMap::new();
+        // Map from face center vertex to face point
+        let mut face_vertex_positions: HashMap<VertexId, Vec3> = HashMap::new();
+
+        let mut he_cache = HashSet::new();
+        let mut result_selection = MeshSelection::new();
+
+        // Split edges and place at CC edge points
+        for &he in &halfedges {
+            let he_opposite = he.opposite().run(self)?;
+            if he_cache.contains(&he) {
+                continue;
+            }
+            // Compute key for edge_points lookup
+            let key = if he < he_opposite {
+                (he, he_opposite)
+            } else {
+                (he_opposite, he)
+            };
+
+            let midpoint = edge_points
+                .get(&key)
+                .copied()
+                .unwrap_or_else(|| {
+                    let p0 = he.src_vert().position(self).unwrap_or_default();
+                    let p1 = he.dst_vert().position(self).unwrap_or_default();
+                    0.5 * (p0 + p1)
+                });
+
+            let v = self.add_vertex(midpoint);
+            edge_vertex_positions.insert(v, midpoint);
+
+            let new_he = self.insert_vertex(he, v)?;
+            he_cache.insert(he);
+            he_cache.insert(he_opposite);
+            result_selection.insert(he);
+            result_selection.insert(he_opposite);
+            result_selection.insert(new_he);
+            result_selection.insert(new_he.opposite().run(self)?);
+        }
+
+        // Subdivide faces
+        for &f in &faces {
+            let valence = f.valence(self) / 2;
+            let corner = face_corners.get(&f).copied().unwrap_or_else(|| {
+                f.halfedge().src_vert().run(self).unwrap()
+            });
+            let corner_edge = f
+                .halfedges(self)
+                .find(|he| he.src_vert().run(self).unwrap() == corner)
+                .unwrap();
+            let he_loop = self.halfedge_loop(corner_edge.next().run(self)?);
+
+            if valence == 3 {
+                // For CC, triangles get a center vertex and produce quads
+                let fp = face_points.get(&f).copied().unwrap_or_else(|| {
+                    self.get_face_centroid(f).unwrap_or_default()
+                });
+                let v_c = self.add_vertex(fp);
+                face_vertex_positions.insert(v_c, fp);
+                self.delete_only_face(f)?;
+
+                // Create quads from each pair (corner, mid, center)
+                for (h0, h1) in he_loop.iter().circular_tuple_windows().step_by(2) {
+                    let f = self.make_quad(
+                        h0.src_vert().run(self)?,
+                        h1.src_vert().run(self)?,
+                        h1.dst_vert().run(self)?,
+                        v_c,
+                    )?;
+                    result_selection.insert(f);
+                }
+            } else if valence == 4 {
+                let fp = face_points.get(&f).copied().unwrap_or_else(|| {
+                    self.get_face_centroid(f).unwrap_or_default()
+                });
+                let v_c = self.add_vertex(fp);
+                face_vertex_positions.insert(v_c, fp);
+                self.delete_only_face(f)?;
+
+                for (h0, h1) in he_loop.iter().circular_tuple_windows().step_by(2) {
+                    let f = self.make_quad(
+                        h0.src_vert().run(self)?,
+                        h1.src_vert().run(self)?,
+                        h1.dst_vert().run(self)?,
+                        v_c,
+                    )?;
+                    result_selection.insert(f);
+                }
+            }
+            // N-gons: leave as-is
+        }
+
+        // --- Phase 3: Apply CC positions to original vertices ---
+        for (v, pos) in &vertex_new_positions {
+            if self.positions.contains_key(*v) {
+                self.positions.insert(*v, *pos);
+            }
+        }
+
+        Ok(result_selection)
     }
 
     /// Perform a loop cut along an edge loop, splitting faces at parameter `t` (0..1).
