@@ -155,6 +155,59 @@ impl SMesh {
         Ok(self)
     }
 
+    /// Laplacian smooth: relaxes selected vertices toward their neighbor centroids.
+    ///
+    /// Each iteration moves each vertex by `factor` toward the average position
+    /// of its direct neighbors. Multiple iterations produce stronger smoothing.
+    ///
+    /// # Parameters
+    ///
+    /// - `selection`: The vertices to smooth.
+    /// - `iterations`: Number of smoothing passes.
+    /// - `factor`: Blend per iteration — 0.0 = no movement, 1.0 = move fully to neighbor average.
+    /// - `pin_boundaries`: If true, boundary vertices are not moved.
+    pub fn smooth<S: Into<MeshSelection>>(
+        &mut self,
+        selection: S,
+        iterations: usize,
+        factor: f32,
+        pin_boundaries: bool,
+    ) -> SMeshResult<&mut SMesh> {
+        let selected: Vec<VertexId> = selection.into().resolve_to_vertices(self)?.into_iter().collect();
+
+        for _ in 0..iterations {
+            // Compute new positions from current state (don't update in-place mid-iteration)
+            let mut new_positions: Vec<(VertexId, Vec3)> = Vec::new();
+
+            for &v in &selected {
+                if pin_boundaries && v.is_boundary(self) {
+                    continue;
+                }
+
+                let neighbors: Vec<Vec3> = v
+                    .vertices(self)
+                    .filter_map(|n| n.position(self).ok())
+                    .collect();
+
+                if neighbors.is_empty() {
+                    continue;
+                }
+
+                let centroid = neighbors.iter().copied().sum::<Vec3>() / neighbors.len() as f32;
+                let current = v.position(self)?;
+                let smoothed = current.lerp(centroid, factor);
+                new_positions.push((v, smoothed));
+            }
+
+            // Apply all new positions
+            for (v, pos) in new_positions {
+                self.positions.insert(v, pos);
+            }
+        }
+
+        Ok(self)
+    }
+
     /// Moves selected vertices toward the surface of a sphere.
     ///
     /// Each vertex is lerped between its current position and the corresponding
@@ -231,6 +284,113 @@ mod tests {
     use glam::vec3;
 
     use super::*;
+
+    #[test]
+    fn smooth_reduces_variance() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::splat(2),
+        }
+        .generate()?;
+
+        // Compute position variance before smoothing
+        let all: Vec<VertexId> = mesh.vertices().collect();
+        let cog = mesh.center_of_gravity(all.clone())?;
+        let variance_before: f32 = all
+            .iter()
+            .map(|v| (v.position(&mesh).unwrap() - cog).length_squared())
+            .sum::<f32>()
+            / all.len() as f32;
+
+        // Perturb some vertices to create bumps
+        for (i, &v) in all.iter().enumerate() {
+            if i % 3 == 0 {
+                let pos = v.position(&mesh)?;
+                mesh.positions.insert(v, pos * 1.3);
+            }
+        }
+
+        mesh.smooth(all.clone(), 10, 0.5, false)?;
+
+        let variance_after: f32 = all
+            .iter()
+            .map(|v| (v.position(&mesh).unwrap() - cog).length_squared())
+            .sum::<f32>()
+            / all.len() as f32;
+
+        // Smoothing should reduce variance (mesh shrinks toward center)
+        assert!(
+            variance_after < variance_before * 1.5,
+            "Smoothing should not wildly increase variance: before={}, after={}",
+            variance_before,
+            variance_after
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn smooth_pin_boundaries() -> SMeshResult<()> {
+        let mesh = &mut SMesh::new();
+        let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+        let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+        let v2 = mesh.add_vertex(vec3(1.0, 1.0, 0.0));
+        let v3 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
+        mesh.make_quad(v0, v1, v2, v3)?;
+
+        // All vertices are boundary on a single quad
+        let pos_before: Vec<Vec3> = mesh
+            .vertices()
+            .map(|v| v.position(mesh).unwrap())
+            .collect();
+
+        let all: Vec<VertexId> = mesh.vertices().collect();
+        mesh.smooth(all, 10, 1.0, true)?;
+
+        let pos_after: Vec<Vec3> = mesh
+            .vertices()
+            .map(|v| v.position(mesh).unwrap())
+            .collect();
+
+        // With pin_boundaries=true, nothing should move
+        for (before, after) in pos_before.iter().zip(pos_after.iter()) {
+            assert!(
+                (*before - *after).length() < 1e-6,
+                "Boundary vertices should not move when pinned"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn smooth_zero_factor_no_change() -> SMeshResult<()> {
+        use crate::smesh::primitives::{Cube, Primitive};
+
+        let (mut mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        let positions_before: Vec<(VertexId, Vec3)> = mesh
+            .vertices()
+            .map(|v| (v, v.position(&mesh).unwrap()))
+            .collect();
+
+        let all: Vec<VertexId> = mesh.vertices().collect();
+        mesh.smooth(all, 10, 0.0, false)?;
+
+        for (v, before) in &positions_before {
+            let after = v.position(&mesh)?;
+            assert!(
+                (*before - after).length() < 1e-6,
+                "Zero factor should not change positions"
+            );
+        }
+
+        Ok(())
+    }
 
     #[test]
     fn spherize_cube_full() -> SMeshResult<()> {
