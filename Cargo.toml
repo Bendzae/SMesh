@@ -31,6 +31,7 @@ image = { version = "0.25.10", default-features = false, features = ["png"], opt
 bevy = "0.18.1"
 bevy_panorbit_camera = { version = "0.34.0", features = ["bevy_egui"] }
 bevy-inspector-egui = "0.36.0"
+bevy_hotpatching_experiments = "0.4.0"
 fastrand = "2.3.0"
 fastrand-contrib = "0.1.0"
 

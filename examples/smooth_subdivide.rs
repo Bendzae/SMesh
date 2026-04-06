@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy_hotpatching_experiments::prelude::*;
 use bevy_inspector_egui::bevy_egui::EguiPlugin;
 use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
 use glam::vec3;
@@ -7,6 +8,10 @@ use smesh::{
     adapters::bevy::{DebugDrawMode, DebugRenderSMesh, SMeshDebugDrawPlugin, Selection},
     prelude::*,
 };
+
+/// Marker for entities spawned by init_system, so we can despawn on hot reload.
+#[derive(Component)]
+struct SceneEntity;
 
 /// Cube with N iterations of smooth subdivision.
 fn smooth_cube(iterations: usize) -> SMeshResult<SMesh> {
@@ -73,6 +78,7 @@ fn spawn_mesh(
 ) {
     let v0 = smesh.vertices().next().unwrap();
     commands.spawn((
+        SceneEntity,
         Mesh3d(meshes.add(Mesh::from(smesh.clone()))),
         MeshMaterial3d(materials.add(StandardMaterial::from(color))),
         Transform::from_translation(position),
@@ -84,18 +90,27 @@ fn spawn_mesh(
     ));
 }
 
+#[hot(rerun_on_hot_patch = true)]
 fn init_system(
+    previous: Query<Entity, With<SceneEntity>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    // Despawn previous scene on hot reload
+    for entity in previous.iter() {
+        commands.entity(entity).despawn();
+    }
+
+    // --- Top row: plain cubes ---
+
     // 0 iterations — plain cube
     spawn_mesh(
         &mut commands,
         &mut meshes,
         &mut materials,
         smooth_cube(0).unwrap(),
-        Color::srgb(0.6, 0.6, 0.6),
+        Color::srgb(1.0, 0.6, 0.6),
         vec3(-5.0, 0.0, 0.0),
     );
 
@@ -105,7 +120,7 @@ fn init_system(
         &mut meshes,
         &mut materials,
         smooth_cube(1).unwrap(),
-        Color::srgb(0.9, 0.4, 0.3),
+        Color::srgb(0.0, 0.0, 1.0),
         vec3(-2.0, 0.0, 0.0),
     );
 
@@ -125,7 +140,7 @@ fn init_system(
         &mut meshes,
         &mut materials,
         smooth_cube(3).unwrap(),
-        Color::srgb(0.3, 0.5, 0.9),
+        Color::srgb(0.9, 0.5, 0.9),
         vec3(4.0, 0.0, 0.0),
     );
 
@@ -170,14 +185,14 @@ fn init_system(
         Color::srgb(0.3, 0.5, 0.9),
         vec3(4.0, -4.0, 0.0),
     );
+}
 
-    // Light
+fn setup_camera(mut commands: Commands) {
     commands.spawn((
         PointLight::default(),
         Transform::from_translation(vec3(3.0, 5.0, 6.0)),
     ));
 
-    // Camera
     commands.spawn((
         Camera3d::default(),
         Transform::from_translation(vec3(0.0, 3.0, 12.0)),
@@ -196,10 +211,11 @@ fn main() {
         })
         .add_plugins((
             DefaultPlugins,
+            SimpleSubsecondPlugin::default(),
             PanOrbitCameraPlugin,
             SMeshDebugDrawPlugin,
             EguiPlugin::default(),
         ))
-        .add_systems(Startup, init_system)
+        .add_systems(Startup, (setup_camera, init_system))
         .run();
 }
