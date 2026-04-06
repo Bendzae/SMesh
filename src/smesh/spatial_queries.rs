@@ -84,6 +84,95 @@ impl SMesh {
             .collect()
     }
 
+    /// Select a connected region of faces near a point.
+    ///
+    /// Finds the closest face to `center`, then flood-fills to neighboring faces
+    /// whose centroids are within `radius` of `center`. Optionally filters by
+    /// face normal direction.
+    ///
+    /// # Parameters
+    ///
+    /// - `center`: World-space point to select around.
+    /// - `radius`: Maximum distance from `center` for face centroids.
+    /// - `normal_filter`: Optional `(direction, max_angle)` — only include faces
+    ///   whose normal is within `max_angle` radians of `direction`.
+    pub fn select_region(
+        &self,
+        center: Vec3,
+        radius: f32,
+        normal_filter: Option<(Vec3, f32)>,
+    ) -> Vec<FaceId> {
+        let radius_sq = radius * radius;
+
+        // Find seed face (closest centroid to center)
+        let seed = self.faces().min_by(|a, b| {
+            let da = self
+                .get_face_centroid(*a)
+                .map(|c| (c - center).length_squared())
+                .unwrap_or(f32::INFINITY);
+            let db = self
+                .get_face_centroid(*b)
+                .map(|c| (c - center).length_squared())
+                .unwrap_or(f32::INFINITY);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let Some(seed) = seed else {
+            return vec![];
+        };
+
+        // Flood-fill from seed
+        let mut selected = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        let mut queue = std::collections::VecDeque::new();
+        queue.push_back(seed);
+        visited.insert(seed);
+
+        let normal_cos = normal_filter.map(|(dir, angle)| (dir.normalize_or_zero(), angle.cos()));
+
+        while let Some(face) = queue.pop_front() {
+            // Check centroid within radius
+            let centroid = match self.get_face_centroid(face) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            if (centroid - center).length_squared() > radius_sq {
+                continue;
+            }
+
+            // Check normal filter
+            if let Some((dir, cos_threshold)) = normal_cos {
+                let positions: Vec<Vec3> = face
+                    .vertices(self)
+                    .filter_map(|v| v.position(self).ok())
+                    .collect();
+                if positions.len() >= 3 {
+                    let e1 = positions[1] - positions[0];
+                    let e2 = positions[2] - positions[0];
+                    let normal = e1.cross(e2).normalize_or_zero();
+                    if normal.dot(dir) < cos_threshold {
+                        continue;
+                    }
+                }
+            }
+
+            selected.push(face);
+
+            // Enqueue neighboring faces (faces sharing an edge)
+            for he in face.halfedges(self) {
+                if let Ok(opp) = he.opposite().run(self) {
+                    if let Ok(neighbor_face) = opp.face().run(self) {
+                        if visited.insert(neighbor_face) {
+                            queue.push_back(neighbor_face);
+                        }
+                    }
+                }
+            }
+        }
+
+        selected
+    }
+
     /// Cast a ray and return the closest face hit.
     ///
     /// Uses Möller–Trumbore intersection for triangulated faces.
@@ -298,6 +387,64 @@ mod tests {
     fn nearest_vertex_empty_mesh() {
         let mesh = SMesh::new();
         assert!(mesh.nearest_vertex(Vec3::ZERO).is_none());
+    }
+
+    #[test]
+    fn select_region_basic() -> SMeshResult<()> {
+        let (mesh, _) = Cube {
+            subdivision: glam::U16Vec3::splat(2),
+        }
+        .generate()?;
+
+        // Large radius should get all faces
+        let all = mesh.select_region(Vec3::ZERO, 10.0, None);
+        assert_eq!(all.len(), mesh.faces().count());
+
+        // Small radius centered on one face should get fewer
+        let some = mesh.select_region(vec3(0.0, 1.0, 0.0), 0.8, None);
+        assert!(some.len() < mesh.faces().count());
+        assert!(!some.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn select_region_with_normal_filter() -> SMeshResult<()> {
+        let (mesh, _) = Cube {
+            subdivision: glam::U16Vec3::ONE,
+        }
+        .generate()?;
+
+        // Select only upward-facing faces near the top
+        let top_faces = mesh.select_region(
+            vec3(0.0, 1.0, 0.0),
+            2.0,
+            Some((Vec3::Y, FRAC_PI_4)),
+        );
+
+        // Should only get the top face of the cube
+        assert_eq!(top_faces.len(), 1);
+
+        // All selected faces should face up
+        for f in &top_faces {
+            let positions: Vec<Vec3> = f
+                .vertices(&mesh)
+                .filter_map(|v| v.position(&mesh).ok())
+                .collect();
+            let e1 = positions[1] - positions[0];
+            let e2 = positions[2] - positions[0];
+            let normal = e1.cross(e2).normalize_or_zero();
+            assert!(normal.dot(Vec3::Y) > 0.5);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn select_region_empty_mesh() {
+        let mesh = SMesh::new();
+        let result = mesh.select_region(Vec3::ZERO, 1.0, None);
+        assert!(result.is_empty());
     }
 
     #[test]
