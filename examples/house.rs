@@ -1,6 +1,7 @@
 use std::f32::consts::PI;
 
 use bevy::prelude::*;
+use bevy_hotpatching_experiments::prelude::*;
 use bevy_inspector_egui::{
     inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
 };
@@ -760,6 +761,7 @@ fn generate_house(params: &HouseParameters) -> SMeshResult<SMesh> {
     Ok(mesh)
 }
 
+#[hot]
 fn update_house_system(
     params: Res<HouseParameters>,
     houses: Query<Entity, With<HouseTag>>,
@@ -812,7 +814,7 @@ fn init_system(
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
+        .add_plugins((DefaultPlugins, SimpleSubsecondPlugin::default(), ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
         .add_plugins(ResourceInspectorPlugin::<HouseParameters>::default())
         .add_systems(Startup, init_system)
         .add_systems(Update, update_house_system)

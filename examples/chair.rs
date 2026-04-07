@@ -1,6 +1,7 @@
 use std::f32::consts::PI;
 
 use bevy::prelude::*;
+use bevy_hotpatching_experiments::prelude::*;
 use bevy_inspector_egui::{
     inspector_options::ReflectInspectorOptions, quick::ResourceInspectorPlugin, InspectorOptions,
 };
@@ -238,6 +239,7 @@ fn generate_chair(params: &ChairParameters) -> SMeshResult<SMesh> {
     Ok(mesh)
 }
 
+#[hot]
 fn update_chair_system(
     params: Res<ChairParameters>,
     chairs: Query<Entity, With<ChairTag>>,
@@ -290,7 +292,7 @@ fn init_system(
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
+        .add_plugins((DefaultPlugins, SimpleSubsecondPlugin::default(), ShowcasePlugin, PanOrbitCameraPlugin, EguiPlugin::default()))
         .add_plugins(ResourceInspectorPlugin::<ChairParameters>::default())
         .add_systems(Startup, init_system)
         .add_systems(Update, update_chair_system)
