@@ -1,11 +1,12 @@
-example-extrude:
-	cargo run --example extrude
+# Run an example with hot patching (sub-second reload on save)
+# Requires: cargo install dioxus-cli@0.7.0-rc.1
+dev example:
+    dx serve --example {{example}} --hot-patch
 
-example-tree:
-	cargo run --example tree
+# Run an example normally (no hot reload)
+run example:
+    cargo run --example {{example}}
 
-example-visualizer:
-	cargo run --example visualizer
-
-example-uv:
-	cargo run --example uv_unwrap --features xatlas
+# List all available examples
+list:
+    @ls examples/*.rs | sed 's|examples/||;s|\.rs||'
