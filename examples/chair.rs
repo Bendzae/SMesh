@@ -245,8 +245,10 @@ fn update_chair_system(
     chairs: Query<Entity, With<ChairTag>>,
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
+    mut hot_events: MessageReader<HotPatched>,
 ) {
-    if params.is_changed() {
+    let hot_patched = hot_events.read().count() > 0;
+    if params.is_changed() || hot_patched {
         for e in &chairs {
             let smesh = generate_chair(&params).unwrap();
             let v0 = smesh.vertices().next().unwrap();
