@@ -42,6 +42,11 @@ bevy_adapter = ["dep:bevy"]
 xatlas = ["dep:xatlas-rs-v2"]
 preview = ["dep:euc", "dep:image"]
 
+# Workaround for objc2 panic on macOS 26 (Tahoe)
+# See: https://github.com/bevyengine/bevy/issues/19625
+[profile.dev.package.objc2]
+debug-assertions = false
+
 [[example]]
 name = "uv_unwrap"
 required-features = ["xatlas"]
