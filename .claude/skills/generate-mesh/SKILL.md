@@ -29,13 +29,7 @@ Plan the construction approach:
 - **Sculpting from a primitive** (extrude, inset, loop_cut, vertices_where) for organic/monolithic shapes
 - **Combining parts** (combine_with + weld_vertices) for mechanical/multi-component objects
 
-After topology-changing operations, clear stale normals:
-```rust
-mesh.face_normals = None;
-mesh.vertex_normals = None;
-```
-
-Call `recalculate_normals()` at the end.
+After topology-changing operations, call `recalculate_normals()` at the end.
 
 ## Step 3: Visual Verification
 
@@ -59,3 +53,19 @@ Follow the structure in `examples/chair.rs`:
 - `PanOrbitCamera` with `focus`/`radius`/`yaw`/`pitch` fields (not Transform)
 - `ResourceInspectorPlugin` for live parameter tweaking
 - Tests that verify mesh validity and dimensions
+
+### Hot Patching (required)
+
+All examples must support hot patching for live code reload:
+
+1. Import the prelude: `use bevy_hotpatching_experiments::prelude::*;`
+2. Add `SimpleSubsecondPlugin::default()` to your app plugins
+3. Annotate the update system with `#[hot]`
+4. Add `mut hot_events: MessageReader<HotPatched>` as a system parameter
+5. Trigger regeneration on hot patch events:
+   ```rust
+   let hot_patched = hot_events.read().count() > 0;
+   if params.is_changed() || hot_patched {
+       // regenerate mesh
+   }
+   ```
