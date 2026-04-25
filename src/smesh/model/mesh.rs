@@ -7,60 +7,142 @@ use slotmap::{SecondaryMap, SlotMap};
 
 use crate::{bail, prelude::*};
 
+/// A halfedge (polygon) mesh: connectivity plus attribute storage.
+///
+/// An `SMesh` is the main handle you interact with. It bundles:
+///
+/// - **Topology** — stored internally as three [`SlotMap`]s of vertices,
+///   halfedges, and faces. See [`Connectivity`].
+/// - **Geometry** — [`positions`](Self::positions) map each [`VertexId`] to a
+///   world-space [`Vec3`]. This is the only attribute that always exists.
+/// - **Derived attributes** — [`face_normals`](Self::face_normals),
+///   [`vertex_normals`](Self::vertex_normals), [`vertex_uvs`](Self::vertex_uvs)
+///   and [`halfedge_uvs`](Self::halfedge_uvs) are lazily populated (e.g. by
+///   [`recalculate_normals`](Self::recalculate_normals) or UV ops).
+/// - **User attributes** — named typed maps keyed by element id
+///   ([`vertex_attributes`](Self::vertex_attributes) and siblings).
+/// - **Tags** — named [`MeshSelection`]s retrievable by string; managed via
+///   [`tag`](Self::tag) and [`get_tag`](Self::get_tag).
+///
+/// All editing methods take `&mut self`, live as extension impls in other
+/// modules (see [`crate::smesh::edit_operations`], [`crate::smesh::transform`]),
+/// and are brought into scope by `use smesh::prelude::*;`.
+///
+/// ```
+/// use glam::vec3;
+/// use smesh::prelude::*;
+///
+/// let mut mesh = SMesh::new();
+/// let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+/// let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+/// let v2 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
+/// mesh.make_triangle(v0, v1, v2).unwrap();
+/// mesh.recalculate_normals().unwrap();
+/// assert_eq!(mesh.vertices().len(), 3);
+/// assert_eq!(mesh.faces().len(), 1);
+/// ```
 #[derive(Debug, Clone, Default)]
 pub struct SMesh {
     pub(crate) connectivity: Connectivity,
 
-    // Attributes
+    /// Per-vertex world-space positions. Required for every non-isolated vertex.
     pub positions: SecondaryMap<VertexId, Vec3>,
+    /// Per-face normals. Populated by
+    /// [`recalculate_normals`](Self::recalculate_normals).
     pub face_normals: Option<SecondaryMap<FaceId, Vec3>>,
+    /// Per-vertex normals (area-weighted average of adjacent face normals).
+    /// Populated by [`recalculate_normals`](Self::recalculate_normals).
     pub vertex_normals: Option<SecondaryMap<VertexId, Vec3>>,
+    /// Per-vertex UV coordinates. Use this when every incident halfedge at a
+    /// vertex shares the same UV. See also [`halfedge_uvs`](Self::halfedge_uvs)
+    /// for UV seams.
     pub vertex_uvs: Option<SecondaryMap<VertexId, Vec2>>,
+    /// Per-halfedge UV coordinates. Allows distinct UVs across seams (e.g.
+    /// island boundaries on a cube). Only inner halfedges (those belonging to
+    /// a face) carry UVs.
     pub halfedge_uvs: Option<SecondaryMap<HalfedgeId, Vec2>>,
+    /// Named typed attribute maps keyed by [`VertexId`].
+    /// Created via [`add_attribute_map::<VertexId>`](Self::add_attribute_map).
     pub vertex_attributes: HashMap<String, CustomAttributeMap<VertexId>>,
+    /// Named typed attribute maps keyed by [`HalfedgeId`] (per-edge storage).
     pub edge_attributes: HashMap<String, CustomAttributeMap<HalfedgeId>>,
+    /// Named typed attribute maps keyed by [`FaceId`].
     pub face_attributes: HashMap<String, CustomAttributeMap<FaceId>>,
 
-    // Named element groups for tagging selections
+    /// Named selections. Managed through [`tag`](Self::tag),
+    /// [`get_tag`](Self::get_tag) and friends; not meant to be accessed
+    /// directly.
     pub(crate) tags: HashMap<String, MeshSelection>,
 }
 
-/// Init, Getters
+/// Construction and direct element access.
 impl SMesh {
+    /// Create an empty mesh with no vertices, halfedges, or faces.
     pub fn new() -> Self {
         Self {
             connectivity: Connectivity::default(),
             ..Default::default()
         }
     }
-    pub fn vertices(&self) -> slotmap::basic::Keys<VertexId, Vertex> {
+
+    /// Iterate over every [`VertexId`] currently stored in the mesh.
+    pub fn vertices(&self) -> slotmap::basic::Keys<'_, VertexId, Vertex> {
         self.connectivity.vertices.keys()
     }
-    pub fn halfedges(&self) -> slotmap::basic::Keys<HalfedgeId, Halfedge> {
+
+    /// Iterate over every [`HalfedgeId`] (two per undirected edge).
+    pub fn halfedges(&self) -> slotmap::basic::Keys<'_, HalfedgeId, Halfedge> {
         self.connectivity.halfedges.keys()
     }
-    pub fn faces(&self) -> slotmap::basic::Keys<FaceId, Face> {
+
+    /// Iterate over every [`FaceId`] currently stored in the mesh.
+    pub fn faces(&self) -> slotmap::basic::Keys<'_, FaceId, Face> {
         self.connectivity.faces.keys()
     }
+
+    /// Mutable access to the underlying vertex slot map. Prefer higher-level
+    /// editing ops unless you're implementing a primitive or low-level tool.
     pub fn vertices_mut(&mut self) -> &mut SlotMap<VertexId, Vertex> {
         &mut self.connectivity.vertices
     }
+
+    /// Mutable access to the underlying halfedge slot map. See
+    /// [`vertices_mut`](Self::vertices_mut) for usage guidance.
     pub fn halfedges_mut(&mut self) -> &mut SlotMap<HalfedgeId, Halfedge> {
         &mut self.connectivity.halfedges
     }
+
+    /// Mutable access to the underlying face slot map. See
+    /// [`vertices_mut`](Self::vertices_mut) for usage guidance.
     pub fn faces_mut(&mut self) -> &mut SlotMap<FaceId, Face> {
         &mut self.connectivity.faces
     }
+
+    /// Unchecked mutable access to a [`Vertex`] payload.
+    ///
+    /// # Panics
+    /// Panics if `id` does not exist. Use
+    /// [`vertices_mut().get_mut(id)`](SlotMap::get_mut) or the
+    /// [`Connectivity::vert_mut`](crate::prelude::Connectivity::vert_mut)
+    /// helper for a checked alternative.
     pub fn vert_mut(&mut self, id: VertexId) -> &mut Vertex {
         self.vertices_mut().get_mut(id).unwrap()
     }
+
+    /// Unchecked mutable access to a [`Halfedge`] payload. Panics on stale id.
     pub fn he_mut(&mut self, id: HalfedgeId) -> &mut Halfedge {
         self.halfedges_mut().get_mut(id).unwrap()
     }
+
+    /// Unchecked mutable access to a [`Face`] payload. Panics on stale id.
     pub fn face_mut(&mut self, id: FaceId) -> &mut Face {
         self.faces_mut().get_mut(id).unwrap()
     }
-    pub fn get_mut<T>(&mut self, id: T) -> MeshMutator<T> {
+
+    /// Obtain a [`MeshMutator`] for fluent connectivity edits on the given
+    /// element. Only borrows [`Connectivity`], leaving attribute maps free to
+    /// mutate in parallel code paths.
+    pub fn get_mut<T>(&mut self, id: T) -> MeshMutator<'_, T> {
         MeshMutator {
             conn: &mut self.connectivity,
             value: id,
@@ -68,15 +150,20 @@ impl SMesh {
     }
 }
 
-/// Operations for adding mesh elements
+/// Operations for adding mesh elements.
 impl SMesh {
-    /// Create an isolated vertex to the mesh
+    /// Add an isolated vertex at `position` and return its new [`VertexId`].
+    ///
+    /// The vertex has no halfedges until it becomes part of a face via
+    /// [`make_face`](Self::make_face) or one of its wrappers.
+    ///
     /// ```
     /// use glam::vec3;
     /// use smesh::prelude::*;
     ///
     /// let mesh = &mut SMesh::new();
-    /// mesh.add_vertex(vec3(0.0,0.0,0.0));
+    /// let v = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+    /// assert!(v.is_isolated(mesh));
     /// ```
     pub fn add_vertex(&mut self, position: Vec3) -> VertexId {
         let id = self.vertices_mut().insert(Vertex::default());
@@ -84,7 +171,9 @@ impl SMesh {
         id
     }
 
-    /// Construct a triangle from the given vertices
+    /// Construct a triangular face `(v0, v1, v2)`. Winding order determines
+    /// the face normal — CCW produces an outward normal under the right-hand
+    /// rule. Thin wrapper over [`make_face`](Self::make_face).
     pub fn make_triangle(
         &mut self,
         v0: VertexId,
@@ -94,7 +183,8 @@ impl SMesh {
         self.make_face(vec![v0, v1, v2])
     }
 
-    /// Construct a quad from the given vertices
+    /// Construct a quad face `(v0, v1, v2, v3)`. Thin wrapper over
+    /// [`make_face`](Self::make_face); winding rules are identical.
     pub fn make_quad(
         &mut self,
         v0: VertexId,
@@ -105,8 +195,18 @@ impl SMesh {
         self.make_face(vec![v0, v1, v2, v3])
     }
 
-    /// Construct a new face from a list of existing vertices
-    /// Takes care of connectivity
+    /// Construct an n-gon face from a list of existing vertices.
+    ///
+    /// The vertex sequence defines the face loop in the intended winding
+    /// direction (CCW when viewed from the outside of a manifold mesh).
+    /// Missing halfedges are created, existing ones are reused, and
+    /// neighbouring halfedge links are patched so the mesh remains a valid
+    /// halfedge structure.
+    ///
+    /// # Errors
+    /// - [`SMeshError::DefaultError`] if fewer than three vertices are given.
+    /// - [`SMeshError::TopologyError`] if a new face here would make a vertex
+    ///   non-manifold, or reuse an interior halfedge.
     pub fn make_face(&mut self, vertices: Vec<VertexId>) -> SMeshResult<FaceId> {
         let n = vertices.len();
         if n < 3 {
@@ -242,8 +342,14 @@ impl SMesh {
         Ok(face_id)
     }
 
-    /// Create an edge (2 halfedges) between two vertices
-    /// CARE!: This does not take care of connectivity for next/prev edges
+    /// Low-level: create an edge (two paired halfedges) between `v0` and `v1`
+    /// and return `(v0→v1, v1→v0)`.
+    ///
+    /// This is a building block for [`make_face`](Self::make_face); it only
+    /// sets the `opposite` and destination vertex links. Callers are
+    /// responsible for `next`/`prev`/face linkage. Prefer [`make_face`](Self::make_face)
+    /// or [`make_quad`](Self::make_quad) unless you are implementing a
+    /// custom topological operator.
     pub fn make_edge_internal(&mut self, v0: VertexId, v1: VertexId) -> (HalfedgeId, HalfedgeId) {
         let halfedges = self.halfedges_mut();
         let he_0_id = halfedges.insert(Halfedge::default());
@@ -258,20 +364,29 @@ impl SMesh {
     }
 }
 
+/// Fluent mutator returned by [`SMesh::get_mut`].
+///
+/// Parameterised by the element id type (`VertexId`, `HalfedgeId`, or
+/// `FaceId`). Borrows only the connectivity, so attribute maps remain free for
+/// use in the same scope.
 pub struct MeshMutator<'a, T> {
     conn: &'a mut Connectivity,
     value: T,
 }
 
-/// Vertex mut ops
+/// Vertex-scoped mutations.
 impl MeshMutator<'_, VertexId> {
-    /// Set outgoing halfedge
+    /// Overwrite this vertex's outgoing halfedge. Boundary preferences are
+    /// maintained automatically by higher-level ops.
     pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) -> SMeshResult<()> {
         self.conn.vert_mut(self.value)?.halfedge = id;
         Ok(())
     }
 
-    /// Set outgoing halfedge to boundary edge if one exists
+    /// If any outgoing halfedge of this vertex is a boundary halfedge, set it
+    /// as the stored outgoing halfedge so iteration starts on the boundary.
+    // Crate-private helper; the boundary-preferred invariant keeps
+    // `set_halfedge` consumers simple.
     pub(crate) fn adjust_outgoing_halfedge(&mut self) -> SMeshResult<()> {
         let initial_h = self.value.halfedge().run(self.conn)?;
         let mut h = initial_h;
@@ -289,15 +404,23 @@ impl MeshMutator<'_, VertexId> {
         Ok(())
     }
 
+    /// Remove this vertex from the connectivity map.
+    ///
+    /// Does **not** detach incident halfedges — use
+    /// [`SMesh::delete_vertex`](crate::prelude::SMesh::delete_vertex) for a
+    /// safe high-level delete.
     pub fn delete(self) -> SMeshResult<()> {
         self.conn.vertices.remove(self.value);
         Ok(())
     }
 }
 
-/// Halfedge mut ops
+/// Halfedge-scoped mutations.
+///
+/// Linking methods keep the paired direction consistent — e.g.
+/// [`set_next`](Self::set_next) also updates the other halfedge's `prev`.
 impl MeshMutator<'_, HalfedgeId> {
-    /// Set "next" id for this halfedge, and inversely the "prev" id for the next
+    /// Link this halfedge to `next` and update `next.prev` to match.
     pub fn set_next(&mut self, next: Option<HalfedgeId>) -> SMeshResult<()> {
         let he = self.value;
         self.conn.he_mut(he)?.next = next;
@@ -307,7 +430,7 @@ impl MeshMutator<'_, HalfedgeId> {
         Ok(())
     }
 
-    /// Set "prev" id for this halfedge, and inversely the "next" id for the prev
+    /// Link this halfedge to `prev` and update `prev.next` to match.
     pub fn set_prev(&mut self, prev: Option<HalfedgeId>) -> SMeshResult<()> {
         let he = self.value;
         self.conn.he_mut(he)?.prev = prev;
@@ -317,7 +440,8 @@ impl MeshMutator<'_, HalfedgeId> {
         Ok(())
     }
 
-    /// Set "opposite" id for this halfedge, and this edge as "opposite" for the other
+    /// Set the opposite halfedge symmetrically (both halfedges point at each
+    /// other).
     pub fn set_opposite(&mut self, opposite: HalfedgeId) -> SMeshResult<()> {
         let he = self.value;
         self.conn.he_mut(he)?.opposite = Some(opposite);
@@ -325,18 +449,23 @@ impl MeshMutator<'_, HalfedgeId> {
         Ok(())
     }
 
-    /// Set the dst vertex id
+    /// Set the destination vertex this halfedge points at.
     pub fn set_vertex(&mut self, vertex: VertexId) -> SMeshResult<()> {
         self.conn.he_mut(self.value)?.vertex = vertex;
         Ok(())
     }
 
-    /// Set the face id
+    /// Set the face this halfedge bounds (use `None` for a boundary halfedge).
     pub fn set_face(&mut self, face: Option<FaceId>) -> SMeshResult<()> {
         self.conn.he_mut(self.value)?.face = face;
         Ok(())
     }
 
+    /// Remove this halfedge and its opposite from the connectivity map.
+    ///
+    /// Does not relink surrounding halfedges; prefer
+    /// [`SMesh::delete_only_edge`](crate::prelude::SMesh::delete_only_edge) or
+    /// higher-level ops.
     pub fn delete(self) -> SMeshResult<()> {
         if let Ok(o) = self.value.opposite().run(self.conn) {
             self.conn.halfedges.remove(o);
@@ -346,14 +475,20 @@ impl MeshMutator<'_, HalfedgeId> {
     }
 }
 
-/// Face mut ops
+/// Face-scoped mutations.
 impl MeshMutator<'_, FaceId> {
-    /// Set halfedge
+    /// Set the halfedge used as the face's "entry point" when iterating.
     pub fn set_halfedge(&mut self, id: Option<HalfedgeId>) -> SMeshResult<()> {
         self.conn.face_mut(self.value)?.halfedge = id;
         Ok(())
     }
 
+    /// Remove this face from the connectivity map.
+    ///
+    /// Does not update the bounding halfedges — they continue to reference the
+    /// now-missing face id. Use
+    /// [`SMesh::delete_only_face`](crate::prelude::SMesh::delete_only_face)
+    /// for a safe delete that turns the halfedges into boundaries.
     pub fn delete(self) -> SMeshResult<()> {
         self.conn.faces.remove(self.value);
         Ok(())

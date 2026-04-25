@@ -1,18 +1,40 @@
+//! Spatial queries against the mesh.
+//!
+//! These operations do not use a spatial acceleration structure — they scan
+//! all vertices or faces. That's fine for meshes up to the low tens of
+//! thousands of faces; for larger data build and reuse a BVH yourself.
+//!
+//! Available queries:
+//!
+//! - [`SMesh::query_region`] / [`SMesh::vertices_where`] — vertex set by predicate.
+//! - [`SMesh::nearest_vertex`] — closest vertex to a point.
+//! - [`SMesh::faces_facing`] — faces whose normal is within an angle of a direction.
+//! - [`SMesh::select_region`] — flood-fill face selection with optional normal filter.
+//! - [`SMesh::raycast`] — closest-hit raycast using Möller–Trumbore.
+
 use glam::Vec3;
 
 use crate::prelude::*;
 
-/// Result of a raycast against the mesh.
+/// First-hit result of [`SMesh::raycast`].
 #[derive(Debug, Clone, Copy)]
 pub struct RaycastHit {
+    /// The face that was hit.
     pub face: FaceId,
+    /// World-space hit position (`origin + direction * distance`).
     pub point: Vec3,
+    /// Distance along the ray from `origin` to `point`.
     pub distance: f32,
+    /// Geometric normal of the hit triangle (unnormalized direction
+    /// guaranteed to be unit length).
     pub normal: Vec3,
 }
 
 impl SMesh {
-    /// Find all vertices within a given radius of a point.
+    /// Return every vertex whose position lies within `radius` of `center`.
+    ///
+    /// The result is wrapped in a [`MeshSelection`] so it can feed directly
+    /// into transform/edit operations.
     pub fn query_region(&self, center: Vec3, radius: f32) -> MeshSelection {
         let radius_sq = radius * radius;
         let verts: Vec<VertexId> = self
@@ -26,7 +48,13 @@ impl SMesh {
         verts.into()
     }
 
-    /// Select all vertices whose position satisfies the given predicate.
+    /// Select every vertex whose position satisfies a custom predicate.
+    ///
+    /// ```no_run
+    /// # use smesh::prelude::*;
+    /// # let mesh = SMesh::new();
+    /// let top = mesh.vertices_where(|p| p.y > 0.5);
+    /// ```
     pub fn vertices_where<F: Fn(Vec3) -> bool>(&self, predicate: F) -> MeshSelection {
         let verts: Vec<VertexId> = self
             .vertices()
@@ -39,7 +67,8 @@ impl SMesh {
         verts.into()
     }
 
-    /// Find the closest vertex to a point.
+    /// Return the vertex closest to `point` together with its Euclidean
+    /// distance, or `None` if the mesh has no vertices with positions.
     pub fn nearest_vertex(&self, point: Vec3) -> Option<(VertexId, f32)> {
         let mut best: Option<(VertexId, f32)> = None;
         for v in self.vertices() {
@@ -53,10 +82,11 @@ impl SMesh {
         best
     }
 
-    /// Find all faces whose computed normal points roughly in the given direction.
+    /// Return every face whose geometric normal is within `threshold_angle`
+    /// radians of `direction`.
     ///
-    /// `threshold_angle` is in radians. A face is included if the angle between
-    /// its normal and `direction` is less than `threshold_angle`.
+    /// Normals are computed from the first three vertex positions — correct
+    /// for planar faces. A zero-length `direction` yields an empty result.
     pub fn faces_facing(&self, direction: Vec3, threshold_angle: f32) -> Vec<FaceId> {
         let dir = direction.normalize_or_zero();
         if dir == Vec3::ZERO {
@@ -173,9 +203,11 @@ impl SMesh {
         selected
     }
 
-    /// Cast a ray and return the closest face hit.
+    /// Cast a ray from `origin` in `direction` and return the closest face hit.
     ///
-    /// Uses Möller–Trumbore intersection for triangulated faces.
+    /// Each face is fan-triangulated and tested with Möller–Trumbore. Back
+    /// faces are *not* culled. Returns `None` if no face is hit or
+    /// `direction` is zero-length.
     pub fn raycast(&self, origin: Vec3, direction: Vec3) -> Option<RaycastHit> {
         let dir = direction.normalize_or_zero();
         if dir == Vec3::ZERO {

@@ -1,3 +1,13 @@
+//! Structured reports for inspecting a mesh and its selections.
+//!
+//! These reports are computed on demand, contain no references to the mesh,
+//! and both `Debug` and `Display` cleanly — suitable for logging, LLM context,
+//! or human inspection. Prefer them over ad-hoc `println!` debugging.
+//!
+//! - [`SMesh::describe`] — whole-mesh summary (counts, bounds, topology flags).
+//! - [`SMesh::describe_selection`] — per-tag / per-selection summary.
+//! - [`SMesh::describe_faces`] — per-face centroid/area/normal list.
+
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
 
@@ -5,39 +15,68 @@ use glam::Vec3;
 
 use crate::prelude::*;
 
-/// Structured report of mesh topology and geometry.
+/// Structured summary of a whole mesh — counts, bounds, and topology flags.
+///
+/// Produced by [`SMesh::describe`]. Implements [`Display`](fmt::Display) for
+/// human-readable output.
 #[derive(Debug, Clone)]
 pub struct MeshReport {
+    /// Total vertices, including isolated ones.
     pub vertex_count: usize,
+    /// Total faces.
     pub face_count: usize,
+    /// Undirected edges (`halfedge_count / 2`).
     pub edge_count: usize,
+    /// Directed halfedges (two per edge).
     pub halfedge_count: usize,
+    /// `(min, max)` corner of the axis-aligned bounding box.
     pub bounding_box: (Vec3, Vec3),
+    /// `bounding_box.1 - bounding_box.0`.
     pub dimensions: Vec3,
+    /// Arithmetic mean of all vertex positions.
     pub center_of_mass: Vec3,
+    /// `true` iff the mesh has no boundary and no isolated vertices.
     pub is_closed: bool,
+    /// `true` iff every vertex has at most one boundary gap (disc one-ring).
     pub is_manifold: bool,
+    /// `true` if any vertex has no incident halfedge.
     pub has_isolated_vertices: bool,
+    /// Counts grouped by polygon type.
     pub face_type_breakdown: FaceTypeBreakdown,
+    /// Number of distinct boundary loops (holes plus outer boundaries).
     pub boundary_loops: usize,
+    /// Number of connected components in the vertex adjacency graph.
     pub connected_components: usize,
 }
 
+/// Counts of triangles, quads, and larger polygons in a mesh or selection.
 #[derive(Debug, Clone, Default)]
 pub struct FaceTypeBreakdown {
+    /// Number of 3-sided faces.
     pub triangles: usize,
+    /// Number of 4-sided faces.
     pub quads: usize,
+    /// Number of faces with 5 or more vertices.
     pub ngons: usize,
 }
 
-/// Report scoped to a selection of elements.
+/// Summary of a selection (tagged region, query result, etc.).
+///
+/// Produced by [`SMesh::describe_selection`]. Counts, bounds, and face-type
+/// breakdown are restricted to elements resolvable from the selection.
 #[derive(Debug, Clone)]
 pub struct SelectionReport {
+    /// Vertices resolvable from the selection.
     pub vertex_count: usize,
+    /// Faces resolvable from the selection.
     pub face_count: usize,
+    /// `(min, max)` of the selected vertex positions.
     pub bounding_box: (Vec3, Vec3),
+    /// Bounding-box size.
     pub dimensions: Vec3,
+    /// Mean of the selected vertex positions.
     pub center: Vec3,
+    /// Counts grouped by polygon type.
     pub face_type_breakdown: FaceTypeBreakdown,
 }
 
@@ -79,13 +118,21 @@ impl fmt::Display for SelectionReport {
     }
 }
 
-/// Per-face spatial report for debugging specific regions.
+/// Per-face geometry record — centroid, normal, area, and vertex count.
+///
+/// Returned in a `Vec` by [`SMesh::describe_faces`]. Useful for targeted
+/// debugging or for filtering faces by spatial predicate.
 #[derive(Debug, Clone)]
 pub struct FaceReport {
+    /// The face this record describes.
     pub face: FaceId,
+    /// Arithmetic mean of the face's vertex positions.
     pub centroid: Vec3,
+    /// Geometric normal, or `None` if the face is degenerate.
     pub normal: Option<Vec3>,
+    /// Face area (sum of triangle-fan triangles).
     pub area: f32,
+    /// Number of vertices bounding the face.
     pub vertex_count: usize,
 }
 
@@ -156,7 +203,10 @@ impl fmt::Display for FaceReport {
 }
 
 impl SMesh {
-    /// Returns a structured report of the mesh that can be printed and parsed.
+    /// Summarise the entire mesh in a structured [`MeshReport`].
+    ///
+    /// Runs in O(V + F + E) time. The report is self-contained (no references
+    /// into the mesh) and safe to log, serialise, or hand off to tests.
     pub fn describe(&self) -> MeshReport {
         let vertex_count = self.vertices().len();
         let face_count = self.faces().len();
@@ -240,8 +290,12 @@ impl SMesh {
         }
     }
 
-    /// Returns a report scoped to a selection of elements.
-    /// Useful for inspecting tagged regions (e.g. "backrest", "legs").
+    /// Summarise a subset of the mesh.
+    ///
+    /// Typical callers pass a tag (`mesh.get_tag("backrest").unwrap().clone()`),
+    /// a `Vec<VertexId>`, or any other type convertible to a
+    /// [`MeshSelection`]. Vertices and faces that cannot be resolved from the
+    /// selection are ignored.
     pub fn describe_selection<S: Into<MeshSelection>>(&self, selection: S) -> SelectionReport {
         let sel = selection.into();
         let vertices = sel.resolve_to_vertices(self).unwrap_or_default();
@@ -291,7 +345,12 @@ impl SMesh {
         }
     }
 
-    /// Returns a per-face spatial report for debugging specific regions.
+    /// Produce one [`FaceReport`] per face — centroid, normal, and area.
+    ///
+    /// Faces with fewer than three usable vertex positions return `normal =
+    /// None` and `area = 0.0`. Area is computed as the sum of triangle-fan
+    /// triangles, which is exact for triangles/quads and a reasonable
+    /// approximation for planar n-gons.
     pub fn describe_faces(&self) -> Vec<FaceReport> {
         self.faces()
             .map(|face| {

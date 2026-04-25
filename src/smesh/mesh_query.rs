@@ -1,3 +1,38 @@
+//! Chainable DSL for navigating mesh connectivity.
+//!
+//! Every element id implements `.q()` via [`ToMeshQueryBuilder`], which begins
+//! a lazy query. You then chain verbs that step through the halfedge
+//! structure, and finish by `.run(&mesh)` (returning an id) or by calling an
+//! eager helper like `.position(&mesh)`, `.valence(&mesh)`, or `.normal(&mesh)`.
+//!
+//! For convenience, the same verbs are also available as inherent methods on
+//! the raw ids — `v.halfedge()` is equivalent to `v.q().halfedge()`.
+//!
+//! ```
+//! # use glam::vec3;
+//! # use smesh::prelude::*;
+//! # let mut mesh = SMesh::new();
+//! # let v0 = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+//! # let v1 = mesh.add_vertex(vec3(1.0, 0.0, 0.0));
+//! # let v2 = mesh.add_vertex(vec3(0.0, 1.0, 0.0));
+//! # mesh.make_triangle(v0, v1, v2).unwrap();
+//! // Walk: v0 → its outgoing halfedge → that halfedge's destination vertex
+//! let dst: VertexId = v0.halfedge().vert().run(&mesh).unwrap();
+//!
+//! // Ask for the halfedge that connects v0 to v1 directly
+//! let he = v0.halfedge_to(v1).run(&mesh).unwrap();
+//! assert_eq!(he.src_vert().run(&mesh).unwrap(), v0);
+//! ```
+//!
+//! ### Verbs by element
+//!
+//! | From a `VertexId` | From a `HalfedgeId` | From a `FaceId` |
+//! |-------------------|---------------------|-----------------|
+//! | `halfedge()` → HE | `vert()`, `src_vert()`, `dst_vert()` → Vert | `halfedge()` → HE |
+//! | `halfedge_to(v)` → HE | `opposite()`, `next()`, `prev()` → HE | |
+//! |                       | `face()` → Face                       | |
+//! |                       | `cw_rotated_neighbour()`, `ccw_rotated_neighbour()` | |
+
 use glam::Vec2;
 use glam::Vec3;
 
@@ -25,6 +60,13 @@ enum QueryOp {
     HalfedgeTo(VertexId),
 }
 
+/// A lazy sequence of navigation steps, parameterised by the expected result
+/// type (one of `VertexId`, `HalfedgeId`, `FaceId`).
+///
+/// Built by calling `.q()` on an element id (see [`ToMeshQueryBuilder`]) or
+/// by chaining verbs such as `.halfedge()`, `.next()`, `.face()`.
+/// Evaluated by calling [`RunQuery::run`] against an [`SMesh`] or a
+/// [`Connectivity`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeshQueryBuilder<T> {
     initial: QueryParam,
@@ -56,11 +98,23 @@ impl<T> MeshQueryBuilder<T> {
     }
 }
 
+/// Seed a [`MeshQueryBuilder`] from an element id.
+///
+/// `v.q()` produces an empty builder targeting the same element; typically
+/// you immediately chain a verb (`v.q().halfedge().next()`). In practice the
+/// inherent-method equivalents on the id types are shorter and read the same.
 pub trait ToMeshQueryBuilder<T> {
+    /// Start a query rooted at this element.
     fn q(&self) -> MeshQueryBuilder<T>;
 }
 
+/// Evaluate a [`MeshQueryBuilder`] against a mesh (or raw [`Connectivity`]).
+///
+/// Returns the element id reached by walking the chain, or an
+/// [`SMeshError`] if any step encounters missing connectivity (stale id,
+/// boundary halfedge asked for its face, etc.).
 pub trait RunQuery<T, E> {
+    /// Evaluate the query against `on` and return the resulting id.
     fn run(self, on: &E) -> SMeshResult<T>;
 }
 
@@ -120,16 +174,36 @@ macro_rules! impl_id_extensions_for {
     };
 }
 
+/// Verbs that start at a vertex.
+///
+/// Implemented for both [`VertexId`] (eager, one-step inherent methods) and
+/// [`MeshQueryBuilder<VertexId>`](MeshQueryBuilder) (chainable lazy form).
+/// Navigation methods return a new builder; evaluation methods
+/// (`is_boundary`, `position`, ...) take a `&SMesh`.
 pub trait VertexOps {
-    /// get outgoing halfege
+    /// Arbitrary outgoing halfedge of this vertex (boundary-preferred on
+    /// boundary vertices).
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// Halfedge going *from* this vertex *to* `dst_vertex`, if one exists.
+    /// Fails with a custom error if no such edge is connected.
     fn halfedge_to(&self, dst_vertex: VertexId) -> MeshQueryBuilder<HalfedgeId>;
+    /// `true` if any outgoing halfedge is on the mesh boundary.
     fn is_boundary(&self, mesh: &SMesh) -> bool;
+    /// `true` if the vertex has no outgoing halfedge (never part of any face).
     fn is_isolated(&self, mesh: &SMesh) -> bool;
+    /// Number of adjacent vertices (the vertex's "degree").
     fn valence(self, mesh: &SMesh) -> usize;
+    /// `true` if this vertex has at most one boundary gap — i.e. the one-ring
+    /// around it is topologically a disc or a half-disc.
     fn is_manifold(&self, mesh: &SMesh) -> bool;
+    /// World-space position (`mesh.positions[v]`).
     fn position(self, mesh: &SMesh) -> SMeshResult<Vec3>;
+    /// Vertex normal (populated by
+    /// [`recalculate_normals`](SMesh::recalculate_normals)).
     fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3>;
+    /// Per-vertex UV (requires [`vertex_uvs`](SMesh::vertex_uvs)); for UVs
+    /// with seams, use the halfedge variant via
+    /// [`HalfedgeOps::uv`].
     fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2>;
 }
 impl VertexOps for MeshQueryBuilder<VertexId> {
@@ -239,19 +313,39 @@ impl VertexOps for VertexId {
     }
 }
 
+/// Verbs that start at a halfedge.
+///
+/// A halfedge is directed and points *at* its destination vertex: `he.vert()`
+/// and `he.dst_vert()` both give the destination, while `he.src_vert()` gives
+/// the source (equivalent to `he.opposite().vert()`).
 pub trait HalfedgeOps {
+    /// Destination vertex (alias of [`dst_vert`](Self::dst_vert)).
     fn vert(&self) -> MeshQueryBuilder<VertexId>;
+    /// Paired halfedge in the opposite direction (same edge, reversed).
     fn opposite(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// Next halfedge around the same face loop (CCW on outer faces).
     fn next(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// Previous halfedge around the same face loop.
     fn prev(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// The face this halfedge bounds. Fails on boundary halfedges — check
+    /// [`is_boundary`](Self::is_boundary) first if unsure.
     fn face(&self) -> MeshQueryBuilder<FaceId>;
+    /// Step to the next outgoing halfedge of the *source* vertex, rotating
+    /// counter-clockwise. Equivalent to `self.prev().opposite()`.
     fn ccw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// Step to the next outgoing halfedge of the *source* vertex, rotating
+    /// clockwise. Equivalent to `self.opposite().next()`.
     fn cw_rotated_neighbour(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// Source vertex (opposite of [`dst_vert`](Self::dst_vert)).
     fn src_vert(&self) -> MeshQueryBuilder<VertexId>;
+    /// Destination vertex the halfedge points at.
     fn dst_vert(&self) -> MeshQueryBuilder<VertexId>;
+    /// `true` if this halfedge lies on the mesh boundary (no face on this side).
     fn is_boundary(&self, mesh: &SMesh) -> bool;
-    // TODO: temp workaround
+    /// Boundary check against a bare [`Connectivity`] — useful inside code
+    /// paths that cannot borrow the full [`SMesh`].
     fn is_boundary_c(&self, connectivity: &Connectivity) -> bool;
+    /// Per-halfedge UV (from [`halfedge_uvs`](SMesh::halfedge_uvs)).
     fn uv(self, mesh: &SMesh) -> SMeshResult<Vec2>;
 }
 impl HalfedgeOps for MeshQueryBuilder<HalfedgeId> {
@@ -352,9 +446,15 @@ impl HalfedgeOps for HalfedgeId {
         bail!("No attribute map for uvs exists");
     }
 }
+/// Verbs that start at a face.
 pub trait FaceOps {
+    /// Arbitrary halfedge on the face boundary.
     fn halfedge(&self) -> MeshQueryBuilder<HalfedgeId>;
+    /// Number of vertices (or equivalently, edges) bounding this face.
+    /// `3` for a triangle, `4` for a quad, etc.
     fn valence(self, mesh: &SMesh) -> usize;
+    /// Face normal (populated by
+    /// [`recalculate_normals`](SMesh::recalculate_normals)).
     fn normal(self, mesh: &SMesh) -> SMeshResult<Vec3>;
 }
 impl FaceOps for MeshQueryBuilder<FaceId> {

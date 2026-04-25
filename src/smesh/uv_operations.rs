@@ -1,9 +1,27 @@
+//! UV manipulation: projections, transforms, and seams.
+//!
+//! UVs are stored in one of two maps on [`SMesh`]:
+//!
+//! - [`vertex_uvs`](SMesh::vertex_uvs) — one UV per vertex. Simple, but
+//!   cannot represent UV discontinuities (seams).
+//! - [`halfedge_uvs`](SMesh::halfedge_uvs) — one UV per inner halfedge. Can
+//!   give different UVs to different faces sharing a vertex (used by
+//!   cube/cylinder/sphere projections so island boundaries stay crisp).
+//!
+//! Projections in this module clear both maps and write new per-halfedge
+//! UVs. The transform helpers
+//! ([`scale_uvs`](SMesh::scale_uvs), [`translate_uvs`](SMesh::translate_uvs),
+//! [`rotate_uvs`](SMesh::rotate_uvs)) operate on whichever maps exist.
+//!
+//! For proper unwrapping (seam detection, island packing), enable the
+//! `xatlas` feature and use the `xatlas_integration` module.
+
 use glam::{vec2, Vec3};
 use slotmap::SecondaryMap;
 
 use crate::prelude::*;
 
-/// UV operations
+/// UV editing operations.
 impl SMesh {
     /// Scale UVs on a selection by a given scale factor around a center point.
     ///
@@ -266,6 +284,12 @@ impl SMesh {
     /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
     /// cube.cylindrical_project_uvs(ProjectionAxis::Y).unwrap();
     /// ```
+    /// Cylindrical UV projection around `axis`.
+    ///
+    /// Clears all existing UVs. For each inner halfedge, `u` is the angle
+    /// around the cylinder axis (normalised to `[0, 1]`), and `v` is the
+    /// normalised coordinate along the axis. Useful for things like tree
+    /// trunks or tubes.
     pub fn cylindrical_project_uvs(&mut self, axis: ProjectionAxis) -> SMeshResult<()> {
         let (mut min_height, mut max_height) = (f32::MAX, f32::MIN);
         
@@ -360,6 +384,11 @@ impl SMesh {
     /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
     /// cube.cube_project_uvs(Vec3::ZERO).unwrap();
     /// ```
+    /// Box ("cube") UV projection centred at `center`.
+    ///
+    /// Clears all existing UVs. Each face is projected onto whichever axial
+    /// plane its normal is closest to, giving six clean UV islands on a
+    /// typical box-shaped mesh.
     pub fn cube_project_uvs(&mut self, center: Vec3) -> SMeshResult<()> {
         let mut min_bounds = Vec3::splat(f32::MAX);
         let mut max_bounds = Vec3::splat(f32::MIN);
@@ -452,6 +481,11 @@ impl SMesh {
     /// let (mut cube, _) = Cube { subdivision: U16Vec3::new(1, 1, 1) }.generate().unwrap();
     /// cube.spherical_project_uvs(Vec3::ZERO).unwrap();
     /// ```
+    /// Spherical UV projection centred at `center`.
+    ///
+    /// Clears all existing UVs. `u` is the azimuth angle (0 at +X, wrapping
+    /// at 1) and `v` is the polar angle (0 at +Y, 1 at −Y). Has the usual
+    /// spherical singularities at the poles.
     pub fn spherical_project_uvs(&mut self, center: Vec3) -> SMeshResult<()> {
         let mut all_face_uvs = Vec::new();
 
@@ -499,10 +533,19 @@ impl SMesh {
     }
 }
 
+/// Axis for planar / cylindrical UV projections.
+///
+/// For planar projection: UVs are dropped onto the plane perpendicular to
+/// the chosen axis. For cylindrical: the axis is the cylinder's axis of
+/// rotation; the angle around it maps to `u` and the coordinate along it
+/// maps to `v`.
 #[derive(Debug, Clone, Copy)]
 pub enum ProjectionAxis {
+    /// Project onto the YZ plane (planar) or use X as the cylinder axis.
     X,
+    /// Project onto the XZ plane (planar) or use Y as the cylinder axis.
     Y,
+    /// Project onto the XY plane (planar) or use Z as the cylinder axis.
     Z,
 }
 

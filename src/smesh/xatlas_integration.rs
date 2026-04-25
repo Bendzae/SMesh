@@ -1,11 +1,29 @@
+//! Automatic UV unwrapping via [xatlas](https://github.com/jpcy/xatlas)
+//! (the `xatlas-rs-v2` binding).
+//!
+//! Available under the `xatlas` feature. The library builds charts (UV
+//! islands) from the mesh topology, packs them into a texture atlas, and
+//! writes the result back into [`halfedge_uvs`](SMesh::halfedge_uvs).
+//!
+//! Start with [`SMesh::auto_uv_unwrap`] for sensible defaults, or
+//! [`SMesh::auto_uv_unwrap_with_options`] to tune chart construction and
+//! packing (see [`XatlasOptions`]).
+
 use glam::Vec2;
 use slotmap::SecondaryMap;
 use xatlas_rs_v2::{ChartOptions, MeshData, MeshDecl, PackOptions, Xatlas};
 
 use crate::prelude::*;
 
+/// Chart and packing options forwarded to xatlas.
+///
+/// Leave the defaults for a balanced chart size / stretch tradeoff. Increase
+/// `chart.max_chart_area` or reduce `pack.padding` to bias toward larger,
+/// tighter islands.
 pub struct XatlasOptions {
+    /// Chart-building options (stretch, proxy quality, chart size limits).
     pub chart: ChartOptions,
+    /// Packing options (padding, resolution, brute force).
     pub pack: PackOptions,
 }
 
@@ -19,18 +37,19 @@ impl Default for XatlasOptions {
 }
 
 impl SMesh {
-    /// Generate UV atlas using automatic unwrapping via xatlas.
+    /// Generate a UV atlas with default xatlas settings.
     ///
-    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
-    /// new halfedge UVs using automatic chart-based unwrapping.
+    /// Clears any existing per-vertex and per-halfedge UVs, then writes new
+    /// per-halfedge UVs produced by automatic chart unwrapping.
     pub fn auto_uv_unwrap(&mut self) -> SMeshResult<()> {
         self.auto_uv_unwrap_with_options(XatlasOptions::default())
     }
 
-    /// Generate UV atlas with custom options using automatic unwrapping via xatlas.
+    /// Same as [`auto_uv_unwrap`](Self::auto_uv_unwrap) but with user-tuned
+    /// chart and packing options.
     ///
-    /// This method clears all existing UVs (both vertex and halfedge UVs) and generates
-    /// new halfedge UVs using automatic chart-based unwrapping with the specified options.
+    /// Errors with [`SMeshError::TopologyError`] if the mesh has no faces or
+    /// xatlas fails to build a valid atlas (e.g. on degenerate geometry).
     pub fn auto_uv_unwrap_with_options(&mut self, options: XatlasOptions) -> SMeshResult<()> {
         let mut positions = Vec::new();
         let mut indices = Vec::new();

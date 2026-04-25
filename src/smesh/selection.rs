@@ -1,3 +1,18 @@
+//! A polymorphic set of mesh elements.
+//!
+//! A [`MeshSelection`] can hold any mix of [`VertexId`], [`HalfedgeId`], and
+//! [`FaceId`] values. When an operation needs a specific element kind it
+//! asks the selection to `resolve_to_*`, which promotes contained elements
+//! (e.g. a selected face contributes all its vertices for
+//! [`resolve_to_vertices`](MeshSelection::resolve_to_vertices)).
+//!
+//! Most editing ops accept anything convertible to `MeshSelection` via
+//! `Into<MeshSelection>`, including:
+//!
+//! - single ids (`v0`, `he`, `f`)
+//! - iterators and collections of ids (`Vec<VertexId>`, `HashSet<FaceId>`, …)
+//! - tags retrieved from the mesh (`mesh.take_tag("backrest").unwrap()`)
+
 use std::collections::HashSet;
 
 use crate::prelude::*;
@@ -6,6 +21,14 @@ use itertools::Itertools;
 
 use super::mesh_query::{HalfedgeOps, RunQuery};
 
+/// An ordered-set of vertices, halfedges, and/or faces.
+///
+/// Construct via `From`/`FromIterator` conversions, or start empty with
+/// [`MeshSelection::new`] and [`insert`](MeshSelectionOps::insert) elements.
+/// Resolve to a concrete element type via
+/// [`resolve_to_vertices`](MeshSelection::resolve_to_vertices),
+/// [`resolve_to_halfedges`](MeshSelection::resolve_to_halfedges), or
+/// [`resolve_to_faces`](MeshSelection::resolve_to_faces).
 #[derive(Debug, Clone, Default)]
 pub struct MeshSelection {
     vertices: HashSet<VertexId>,
@@ -14,17 +37,22 @@ pub struct MeshSelection {
 }
 
 impl MeshSelection {
+    /// Create an empty selection.
     pub fn new() -> Self {
         MeshSelection::default()
     }
 
-    /// Merge another selection into this one.
+    /// Merge `other` into `self` (union of vertices, halfedges, and faces).
     pub fn merge(&mut self, other: &MeshSelection) {
         self.vertices.extend(&other.vertices);
         self.halfedges.extend(&other.halfedges);
         self.faces.extend(&other.faces);
     }
 
+    /// Resolve to the set of vertices covered by this selection.
+    ///
+    /// Stored vertices are included directly; halfedges contribute both
+    /// endpoints; faces contribute every bounding vertex.
     pub fn resolve_to_vertices(&self, smesh: &SMesh) -> SMeshResult<HashSet<VertexId>> {
         let mut vertices = self.vertices.clone();
         for he in &self.halfedges {
@@ -39,6 +67,12 @@ impl MeshSelection {
         Ok(vertices)
     }
 
+    /// Resolve to the set of faces covered by this selection.
+    ///
+    /// Stored faces are included directly; halfedges contribute their face
+    /// (skipped for boundary halfedges); vertices only contribute a face when
+    /// *every* vertex of that face is also in the selection (prevents
+    /// over-growing from a single corner).
     pub fn resolve_to_faces(&self, smesh: &SMesh) -> SMeshResult<HashSet<FaceId>> {
         let mut faces = self.faces.clone();
         for he in &self.halfedges {
@@ -56,6 +90,12 @@ impl MeshSelection {
         Ok(faces)
     }
 
+    /// Resolve to the set of halfedges covered by this selection.
+    ///
+    /// Stored halfedges are included directly; faces contribute every
+    /// halfedge on their boundary; vertices contribute outgoing halfedges
+    /// whose destination is also in the selection (i.e. the edges between
+    /// selected vertices).
     pub fn resolve_to_halfedges(&self, smesh: &SMesh) -> SMeshResult<HashSet<HalfedgeId>> {
         let mut edges = self.halfedges.clone();
         for face in &self.faces {
@@ -74,7 +114,12 @@ impl MeshSelection {
     }
 }
 
+/// Insert an element of type `T` into a [`MeshSelection`].
+///
+/// Implemented uniformly for [`VertexId`], [`HalfedgeId`], and [`FaceId`] so
+/// `selection.insert(id)` works regardless of element kind.
 pub trait MeshSelectionOps<T> {
+    /// Add `item` to the selection. Duplicates are silently ignored.
     fn insert(&mut self, item: T);
 }
 

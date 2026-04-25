@@ -1,3 +1,23 @@
+//! Built-in mesh primitives.
+//!
+//! Each primitive is a builder struct (filled with parameters like `radius`
+//! or `segments`) that implements [`Primitive<Data>`]. Calling
+//! [`generate`](Primitive::generate) returns a new [`SMesh`] together with a
+//! `Data` struct carrying named references to key elements — useful for
+//! immediately extruding a specific face or tagging a vertex.
+//!
+//! ```
+//! use glam::U16Vec3;
+//! use smesh::prelude::*;
+//! use smesh::smesh::primitives::{Cube, Primitive};
+//!
+//! let (mut mesh, data) = Cube { subdivision: U16Vec3::ONE }.generate().unwrap();
+//! let corner = data.front_bottom_left_vertex;
+//! ```
+//!
+//! Available primitives: [`Cube`], [`Icosphere`], [`Cylinder`], [`Quad`],
+//! [`Wedge`], [`Circle`].
+
 use std::{collections::HashMap, f32::consts::PI, usize};
 
 use glam::{vec2, vec3, U16Vec3};
@@ -5,15 +25,30 @@ use itertools::Itertools;
 
 use crate::{bail, prelude::*};
 
+/// Builder interface: every primitive consumes its parameter struct with
+/// `generate()` and returns `(mesh, data)`.
+///
+/// `data` is primitive-specific; e.g. [`CubeData`] exposes a corner vertex,
+/// [`WedgeData`] exposes the front and back faces.
 pub trait Primitive<T> {
+    /// Build the mesh and return it alongside primitive-specific element ids.
     fn generate(self) -> SMeshResult<(SMesh, T)>;
 }
 
+/// Axis-aligned unit cube centred at the origin, side length 1.
+///
+/// `subdivision` controls the grid resolution on each axis; `U16Vec3::ONE`
+/// produces the six-face trivial cube, `splat(2)` divides each face into a
+/// 2×2 grid, etc. Each face carries per-halfedge UVs mapping the unit
+/// square `[0, 1]²`.
 pub struct Cube {
+    /// Subdivisions along (x, y, z). All components must be ≥ 1.
     pub subdivision: U16Vec3,
 }
 
+/// Named references returned by [`Cube::generate`].
 pub struct CubeData {
+    /// Convenience handle to the `(0, 0, +z)` corner vertex.
     pub front_bottom_left_vertex: VertexId,
 }
 
@@ -232,12 +267,22 @@ impl Primitive<CubeData> for Cube {
     }
 }
 
+/// Sphere built by recursively subdividing an icosahedron.
+///
+/// Radius is fixed at `0.5` (so it fits in a unit cube). Each subdivision
+/// replaces every triangle with four, snapping new midpoint vertices onto
+/// the sphere surface. `subdivisions = 0` yields the 20-face icosahedron.
 pub struct Icosphere {
+    /// Number of quadrisection passes. `0` gives an icosahedron;
+    /// values above ~5 are expensive (each step quadruples face count).
     pub subdivisions: usize,
 }
 
+/// Named references returned by [`Icosphere::generate`].
 pub struct IcosphereData {
+    /// A vertex near the top of the sphere (original icosahedron vertex 0).
     pub top_vertex: VertexId,
+    /// A vertex near the bottom (original icosahedron vertex 1).
     pub bottom_vertex: VertexId,
 }
 
@@ -392,8 +437,15 @@ fn get_midpoint(
     }
 }
 
+/// Single unit quad lying in the XZ plane (Y = 0).
+///
+/// Side length 1, centred at the origin, CCW winding when viewed from +Y
+/// (so the face normal points up).
 pub struct Quad;
+
+/// Named references returned by [`Quad::generate`].
 pub struct QuadData {
+    /// The single face of the quad.
     pub face: FaceId,
 }
 
@@ -410,10 +462,17 @@ impl Primitive<QuadData> for Quad {
     }
 }
 
+/// Flat n-gon disc in the XZ plane, radius 0.5.
+///
+/// Centred at the origin with CCW winding viewed from +Y (face normal up).
 pub struct Circle {
+    /// Number of vertices on the rim. Must be ≥ 3.
     pub segments: usize,
 }
+
+/// Named references returned by [`Circle::generate`].
 pub struct CircleData {
+    /// The single n-gon face.
     pub face: FaceId,
 }
 
@@ -607,14 +666,25 @@ mod tests {
     }
 }
 
+/// Triangular prism — two triangles connected by three quads.
+///
+/// The base sits on `y = 0`, the apex at `y = height`, and the prism extends
+/// along Z. Normals point outward. All dimensions must be positive or
+/// `generate()` returns an error.
 pub struct Wedge {
+    /// Extent along X.
     pub width: f32,
+    /// Extent along Y (the apex height).
     pub height: f32,
+    /// Extent along Z (prism depth).
     pub depth: f32,
 }
 
+/// Named references returned by [`Wedge::generate`].
 pub struct WedgeData {
+    /// Triangular face at `z = +depth/2`.
     pub front_face: FaceId,
+    /// Triangular face at `z = -depth/2`.
     pub back_face: FaceId,
 }
 
@@ -655,14 +725,25 @@ impl Primitive<WedgeData> for Wedge {
     }
 }
 
+/// Cylinder along the Y axis: two circular n-gon caps joined by quad sides.
+///
+/// Centred at the origin. Caps are single n-gons (use
+/// [`subdivide`](crate::prelude::SMesh::subdivide) or triangulation if you
+/// need triangles).
 pub struct Cylinder {
+    /// Number of vertices around the circumference. Must be ≥ 3.
     pub segments: usize,
+    /// Total height along Y.
     pub height: f32,
+    /// Cap radius.
     pub radius: f32,
 }
 
+/// Named references returned by [`Cylinder::generate`].
 pub struct CylinderData {
+    /// Face at `y = +height/2`, normal pointing +Y.
     pub top_face: FaceId,
+    /// Face at `y = -height/2`, normal pointing -Y.
     pub bottom_face: FaceId,
 }
 

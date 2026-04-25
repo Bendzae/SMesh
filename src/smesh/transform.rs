@@ -1,9 +1,28 @@
+//! Geometric transforms and smoothing operations.
+//!
+//! The basic transforms — [`translate`](SMesh::translate),
+//! [`rotate`](SMesh::rotate), [`scale`](SMesh::scale) — accept any selection
+//! type (single id, Vec of ids, tag, …) and a [`Pivot`] for rotations/scales.
+//!
+//! Shape-editing operations:
+//!
+//! - [`smooth`](SMesh::smooth) — iterative Laplacian smoothing.
+//! - [`spherize`](SMesh::spherize) — push vertices onto a sphere.
+//! - [`translate_proportional`](SMesh::translate_proportional) /
+//!   [`scale_proportional`](SMesh::scale_proportional) /
+//!   [`rotate_proportional`](SMesh::rotate_proportional) — transform a local
+//!   region with a falloff curve.
+
 use crate::{bail, prelude::*};
 use glam::{Quat, Vec3};
 use itertools::Itertools;
 use selection::MeshSelection;
 
-/// Falloff curve for proportional editing.
+/// Weight-vs-distance curve used by the `*_proportional` transforms.
+///
+/// The input `t` is the normalised distance `distance / radius`; all curves
+/// return `1.0` at `t = 0` and `0.0` outside `t = 1` (except `Constant`,
+/// which returns `1.0` within the radius and `0.0` beyond).
 #[derive(Debug, Clone, Copy)]
 pub enum Falloff {
     /// Weight decreases linearly from 1.0 at center to 0.0 at radius.
@@ -41,15 +60,19 @@ impl Falloff {
     }
 }
 
-/// Pivot point to use for transformations
+/// Pivot point for rotation and scaling.
+///
+/// Chosen per-call, so you can e.g. scale a selection around its own centroid
+/// while keeping the rest of the mesh fixed (`SelectionCog`), or rotate
+/// everything around the world origin (`Origin`).
 pub enum Pivot {
-    /// Use the origin (0,0,0) as the pivot point
+    /// The world origin `(0, 0, 0)`.
     Origin,
-    /// Use the center of gravity of the entire mesh as the pivot point
+    /// Centre of gravity of every vertex in the mesh.
     MeshCog,
-    /// Use the center of gravity of the selection as the pivot point
+    /// Centre of gravity of just the affected selection.
     SelectionCog,
-    /// Use a specific point as the pivot point
+    /// An arbitrary world-space point.
     Point(Vec3),
 }
 
@@ -65,15 +88,13 @@ impl Pivot {
     }
 }
 
-/// Methods for transforming mesh elements
+/// Geometric transforms.
 impl SMesh {
-    /// Translates the selected vertices by a given vector.
+    /// Translate every vertex in `selection` by `translation`.
     ///
-    /// # Parameters
-    ///
-    /// - `selection`: The selection of vertices, edges, or faces to translate.
-    ///   It can be any type that implements `Into<MeshSelection>`.
-    /// - `translation`: The vector by which to translate the selected vertices.
+    /// Anything convertible to [`MeshSelection`] works — selecting a face
+    /// translates all of its vertices, a halfedge translates both endpoints,
+    /// and so on. Returns `&mut Self` for chaining.
     pub fn translate<S: Into<MeshSelection>>(
         &mut self,
         selection: S,
@@ -88,6 +109,11 @@ impl SMesh {
         Ok(self)
     }
 
+    /// Move every vertex in `selection` so that the chosen `pivot` lands at
+    /// `translation`.
+    ///
+    /// Equivalent to translating by `translation - pivot.calculate(...)`.
+    /// Useful for "snap this selection to `X`" style operations.
     pub fn set_position<S: Into<MeshSelection>>(
         &mut self,
         selection: S,
@@ -105,14 +131,9 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Scales the selected vertices by a given factor around a pivot point.
+    /// Scale every vertex in `selection` around `pivot` by component-wise `scale`.
     ///
-    /// # Parameters
-    ///
-    /// - `selection`: The selection of vertices, edges, or faces to scale.
-    ///   It can be any type that implements `Into<MeshSelection>`.
-    /// - `scale`: The scale factors along the X, Y, and Z axes.
-    /// - `pivot`: The pivot point around which the scaling is performed.
+    /// Non-uniform scales are supported — pass `Vec3::splat(k)` for uniform.
     pub fn scale<S: Into<MeshSelection>>(
         &mut self,
         selection: S,
@@ -125,17 +146,10 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Rotates the selected vertices around a pivot point using a quaternion.
+    /// Rotate every vertex in `selection` around `pivot` by `quaternion`.
     ///
-    /// This function calculates the pivot point based on the provided `Pivot` enum
-    /// and then rotates the selected vertices accordingly.
-    ///
-    /// # Parameters
-    ///
-    /// - `selection`: The selection of vertices, edges, or faces to rotate.
-    ///   It can be any type that implements `Into<MeshSelection>`.
-    /// - `quaternion`: The rotation represented as a quaternion.
-    /// - `pivot`: The pivot point around which the rotation is performed.
+    /// Build the quaternion with [`Quat::from_axis_angle`],
+    /// `Quat::from_rotation_x`, or similar glam helpers.
     pub fn rotate<S: Into<MeshSelection>>(
         &mut self,
         selection: S,
@@ -148,14 +162,10 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Calculates the center of gravity (centroid) of the selected vertices.
+    /// Arithmetic mean of every position in `selection`.
     ///
-    /// This function computes the average position of all selected vertices.
-    ///
-    /// # Parameters
-    ///
-    /// - `selection`: The selection of vertices, edges, or faces for which to calculate the center of gravity.
-    ///   It can be any type that implements `Into<MeshSelection>`.
+    /// Errors with [`SMeshError::CustomError`] if the selection resolves to
+    /// zero vertices.
     pub fn center_of_gravity<S: Into<MeshSelection>>(&self, selection: S) -> SMeshResult<Vec3> {
         let vertices = selection.into().resolve_to_vertices(self)?;
 
@@ -173,11 +183,12 @@ impl SMesh {
         Ok(center)
     }
 
-    /// Translate vertices with proportional falloff from a center point.
+    /// Translate vertices softly: proportional editing with a falloff curve.
     ///
-    /// Vertices within `radius` of `center` are translated by `translation * weight`,
-    /// where weight decreases from 1.0 at center to 0.0 at radius according to
-    /// the falloff curve.
+    /// Vertices within `radius` of `center` are moved by
+    /// `translation * falloff.weight(t)`. Vertices at `center` move the full
+    /// amount; vertices at `radius` do not move at all. Useful for sculpting
+    /// bulges or dents without affecting the whole mesh.
     pub fn translate_proportional(
         &mut self,
         center: Vec3,
@@ -202,10 +213,11 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Scale vertices with proportional falloff from a center point.
+    /// Scale vertices softly around `center` with a falloff curve.
     ///
-    /// Vertices within `radius` of `center` are scaled by `lerp(1, scale, weight)`
-    /// around `center`.
+    /// Each affected vertex uses `lerp(Vec3::ONE, scale, weight)` as its
+    /// effective scale, so vertices near `center` are scaled fully and
+    /// vertices near `radius` barely change.
     pub fn scale_proportional(
         &mut self,
         center: Vec3,
@@ -232,10 +244,10 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Rotate vertices with proportional falloff from a center point.
+    /// Rotate vertices softly around `center` with a falloff curve.
     ///
-    /// Vertices within `radius` of `center` are rotated by `slerp(identity, rotation, weight)`
-    /// around `center`.
+    /// Each vertex uses `slerp(Quat::IDENTITY, rotation, weight)` as its
+    /// effective rotation. Produces smooth twists that fade out with distance.
     pub fn rotate_proportional(
         &mut self,
         center: Vec3,
@@ -282,17 +294,16 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Laplacian smooth: relaxes selected vertices toward their neighbor centroids.
+    /// Uniform Laplacian smoothing on `selection`.
     ///
-    /// Each iteration moves each vertex by `factor` toward the average position
-    /// of its direct neighbors. Multiple iterations produce stronger smoothing.
+    /// Each iteration moves each selected vertex a fraction `factor` of the
+    /// way toward the centroid of its one-ring neighbours. Repeat
+    /// `iterations` times for progressively smoother results.
     ///
-    /// # Parameters
-    ///
-    /// - `selection`: The vertices to smooth.
-    /// - `iterations`: Number of smoothing passes.
-    /// - `factor`: Blend per iteration — 0.0 = no movement, 1.0 = move fully to neighbor average.
-    /// - `pin_boundaries`: If true, boundary vertices are not moved.
+    /// Parameters:
+    /// - `factor ∈ [0, 1]` — 0 means no change, 1 snaps fully to the centroid.
+    /// - `pin_boundaries = true` — boundary vertices are excluded (useful
+    ///   for smoothing the interior of a patch without changing its outline).
     pub fn smooth<S: Into<MeshSelection>>(
         &mut self,
         selection: S,
@@ -335,18 +346,16 @@ impl SMesh {
         Ok(self)
     }
 
-    /// Moves selected vertices toward the surface of a sphere.
+    /// Push selected vertices toward a sphere.
     ///
-    /// Each vertex is lerped between its current position and the corresponding
-    /// point on the target sphere (same direction from pivot, at target radius).
+    /// Each vertex is linearly interpolated between its current position and
+    /// the point `pivot + direction * target_radius`, where `direction` is
+    /// the unit vector from `pivot` to the vertex. `amount = 0` leaves the
+    /// mesh unchanged; `amount = 1` snaps every vertex onto the sphere.
     ///
-    /// # Parameters
-    ///
-    /// - `selection`: The vertices to spherize.
-    /// - `amount`: Blend factor — 0.0 = no change, 1.0 = on sphere surface.
-    /// - `pivot`: Center of the sphere.
-    /// - `target_radius`: Radius of the target sphere. If `None`, uses the
-    ///   average distance of selected vertices from the pivot.
+    /// If `target_radius` is `None`, the average distance of selected
+    /// vertices from `pivot` is used — a good default for "make this blob
+    /// more spherical".
     pub fn spherize<S: Into<MeshSelection>>(
         &mut self,
         selection: S,

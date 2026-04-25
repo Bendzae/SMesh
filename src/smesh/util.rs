@@ -1,3 +1,9 @@
+//! Normal, centroid, and selection-wide helpers on [`SMesh`].
+//!
+//! These are small utilities that don't belong to a larger theme but come up
+//! everywhere — recomputing normals after an edit, getting the centre of a
+//! face, selecting every vertex at once.
+
 use glam::Vec3;
 use itertools::Itertools;
 use slotmap::SecondaryMap;
@@ -5,6 +11,13 @@ use slotmap::SecondaryMap;
 use crate::prelude::*;
 
 impl SMesh {
+    /// Recompute per-face and per-vertex normals from vertex positions.
+    ///
+    /// Face normals use the first three vertices of each face (valid for
+    /// planar polygons). Vertex normals are the unweighted sum of incident
+    /// face normals, then normalised.
+    ///
+    /// Idempotent: always safe to call after a geometry-changing edit.
     pub fn recalculate_normals(&mut self) -> SMeshResult<()> {
         // # Step 1: Initialize all vertex normals to zero
         let mut vertex_normals = SecondaryMap::default();
@@ -51,6 +64,12 @@ impl SMesh {
         Ok(())
     }
 
+    /// Invert every face and vertex normal in place.
+    ///
+    /// **Incomplete**: the winding-order reversal needed to make flipping
+    /// topologically consistent is still TODO, so this currently panics.
+    /// Re-call [`recalculate_normals`](Self::recalculate_normals) with a
+    /// mesh whose faces have the desired winding instead.
     pub fn flip_normals(&mut self) -> SMeshResult<()> {
         // Step 1: Flip Face Normals
         if let Some(face_normals) = &mut self.face_normals {
@@ -85,6 +104,7 @@ impl SMesh {
 
         Ok(())
     }
+    /// Arithmetic mean of the face's vertex positions.
     pub fn get_face_centroid(&self, face: FaceId) -> SMeshResult<Vec3> {
         let face_vertices = face.vertices(self).collect_vec();
         let mut centroid = Vec3::ZERO;
@@ -96,6 +116,8 @@ impl SMesh {
         Ok(centroid)
     }
 
+    /// Return a [`MeshSelection`] containing every vertex in the mesh.
+    /// Handy as a starting point for global transforms or subdivisions.
     pub fn select_all(&self) -> MeshSelection {
         self.vertices().collect_vec().into()
     }

@@ -1,3 +1,11 @@
+//! Integrity checks for [`SMesh`].
+//!
+//! Call [`SMesh::validate`] (or [`validate_with_options`](SMesh::validate_with_options)
+//! for custom thresholds) to get a [`ValidationReport`]. The report lists
+//! structural and geometric issues and can be printed directly for
+//! human-readable output. Useful when building meshes procedurally or
+//! importing data from external sources.
+
 use std::collections::HashSet;
 use std::fmt;
 
@@ -5,7 +13,9 @@ use glam::Vec3;
 
 use crate::prelude::*;
 
-/// A single issue found during mesh validation.
+/// A single problem found during mesh validation.
+///
+/// Each variant includes enough context to locate the element(s) at fault.
 #[derive(Debug, Clone)]
 pub enum MeshIssue {
     /// Face has near-zero area.
@@ -90,13 +100,16 @@ impl fmt::Display for MeshIssue {
     }
 }
 
-/// Result of mesh validation.
+/// Result of a validation pass — a (possibly empty) list of issues.
 #[derive(Debug, Clone)]
 pub struct ValidationReport {
+    /// Every issue found. Order is stable (grouped by check) but not
+    /// guaranteed between library versions.
     pub issues: Vec<MeshIssue>,
 }
 
 impl ValidationReport {
+    /// `true` iff no issues were found.
     pub fn is_valid(&self) -> bool {
         self.issues.is_empty()
     }
@@ -116,17 +129,26 @@ impl fmt::Display for ValidationReport {
     }
 }
 
-/// Thresholds for mesh validation.
+/// Tunable thresholds for [`SMesh::validate_with_options`].
+///
+/// Defaults are tight enough to catch genuine problems without complaining
+/// about normal floating-point noise. Loosen them for data coming from CAD /
+/// DCC exports, or tighten them when stress-testing procedural generators.
 pub struct ValidationOptions {
-    /// Faces with area below this are considered degenerate.
+    /// Faces with area below this are flagged
+    /// [`MeshIssue::DegenerateFace`]. Default `1e-7`.
     pub degenerate_face_area: f32,
-    /// Edges shorter than this are considered zero-length.
+    /// Edges shorter than this are flagged
+    /// [`MeshIssue::ZeroLengthEdge`]. Default `1e-6`.
     pub zero_length_edge: f32,
-    /// Vertices closer than this are considered duplicates.
+    /// Vertex pairs closer than this are flagged
+    /// [`MeshIssue::DuplicateVertices`]. Default `1e-5`.
     pub duplicate_vertex_distance: f32,
-    /// Faces with vertex deviation from plane above this are non-planar (only for quads+).
+    /// Max allowed plane-deviation for quads/n-gons before
+    /// [`MeshIssue::NonPlanarFace`] is reported. Default `0.01`.
     pub non_planar_threshold: f32,
-    /// Check for duplicate vertices (O(n^2), can be slow on large meshes).
+    /// Whether to run the duplicate-vertex check. It is O(n²), so set to
+    /// `false` on very large meshes. Default `true`.
     pub check_duplicate_vertices: bool,
 }
 
@@ -143,12 +165,15 @@ impl Default for ValidationOptions {
 }
 
 impl SMesh {
-    /// Validate the mesh and return all issues found.
+    /// Run every check with default thresholds and return the report.
     pub fn validate(&self) -> ValidationReport {
         self.validate_with_options(&ValidationOptions::default())
     }
 
-    /// Validate the mesh with custom thresholds.
+    /// Run every check using custom thresholds.
+    ///
+    /// Checks run in order: connectivity, vertices, edges, faces, winding,
+    /// and (optionally) duplicate vertices.
     pub fn validate_with_options(&self, opts: &ValidationOptions) -> ValidationReport {
         let mut issues = Vec::new();
 

@@ -1,9 +1,17 @@
+//! Name-based storage of mesh selections.
+//!
+//! Tags are strings → [`MeshSelection`] mappings on the mesh. They let
+//! procedural code label regions as they are built ("legs", "seat",
+//! "backrest") and retrieve them by name later, so you don't have to thread
+//! element ids through long call chains. Tags reference elements by id — if
+//! those elements are deleted the tag silently contains stale ids, so refresh
+//! or drop tags when you do large topological edits.
+
 use crate::prelude::*;
 
-/// Stores named groups of mesh elements for easy retrieval.
+/// Tag-management API on [`SMesh`].
 ///
-/// Tags let you label selections during construction and retrieve them later
-/// by name, avoiding the need to track element IDs through long procedural chains.
+/// Tags are strings → [`MeshSelection`] mappings.
 ///
 /// ```
 /// use glam::vec3;

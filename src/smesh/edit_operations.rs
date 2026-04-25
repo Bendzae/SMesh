@@ -1,3 +1,27 @@
+//! High-level mesh editing operations.
+//!
+//! Every method here takes `&mut SMesh` and mutates it in place. The
+//! operations are modelled on DCC tools (Blender, Maya) so the names should
+//! feel familiar. Broadly they split into:
+//!
+//! - **Extrude family** — grow new geometry from existing elements:
+//!   [`extrude`](SMesh::extrude), [`extrude_faces`](SMesh::extrude_faces),
+//!   [`extrude_edge`](SMesh::extrude_edge),
+//!   [`extrude_edge_chain`](SMesh::extrude_edge_chain).
+//! - **Inset** — [`inset`](SMesh::inset), [`inset_faces`](SMesh::inset_faces).
+//! - **Subdivide** — [`subdivide`](SMesh::subdivide) (linear),
+//!   [`smooth_subdivide`](SMesh::smooth_subdivide) (Catmull–Clark).
+//! - **Loop cut** — [`loop_cut`](SMesh::loop_cut).
+//! - **Merge / Weld** — [`merge_vertices`](SMesh::merge_vertices),
+//!   [`weld_vertices`](SMesh::weld_vertices).
+//! - **Bridge** — [`bridge_vertices`](SMesh::bridge_vertices),
+//!   [`bridge`](SMesh::bridge).
+//! - **Combine** — [`combine_with`](SMesh::combine_with) to concatenate meshes.
+//!
+//! After a large edit, call [`recalculate_normals`](SMesh::recalculate_normals)
+//! to refresh normals and (if worried about the result)
+//! [`validate`](SMesh::validate) to check connectivity.
+
 use std::collections::{HashMap, HashSet};
 
 use glam::Vec3;
@@ -6,8 +30,22 @@ use slotmap::SecondaryMap;
 
 use crate::{bail, prelude::*};
 
-/// Edit operations
+/// High-level mesh edit operations.
 impl SMesh {
+    /// Extrude a single face outward. Deletes the original face, duplicates
+    /// its vertices, stitches the old and new rings with quad "walls", and
+    /// returns the newly-created top face.
+    ///
+    /// New vertices start at the same positions as the originals — translate
+    /// the returned face (or its vertices) to give the extrusion height.
+    ///
+    /// ```no_run
+    /// # use smesh::prelude::*;
+    /// # let mut mesh = SMesh::new();
+    /// # let f: FaceId = unimplemented!();
+    /// let top = mesh.extrude(f).unwrap();
+    /// mesh.translate(top, glam::Vec3::Y).unwrap();
+    /// ```
     pub fn extrude(&mut self, face: FaceId) -> SMeshResult<FaceId> {
         let vertices = face.vertices(self).collect_vec();
         // Duplicate verts
@@ -30,6 +68,12 @@ impl SMesh {
         Ok(top_face)
     }
 
+    /// Extrude a connected region of faces as one unit.
+    ///
+    /// Shared edges between selected faces are preserved (no duplicate wall
+    /// quads on interior edges). Each selected face is replaced by a new
+    /// face; the boundary of the region is stitched to the original geometry
+    /// with quad walls. Returns the new top faces in the same order as input.
     pub fn extrude_faces(&mut self, faces: Vec<FaceId>) -> SMeshResult<Vec<FaceId>> {
         // self.add_attribute_map::<HalfedgeId>("debug").unwrap();
         // Step 1: Collect all unique vertices and create mapping to new vertices
@@ -115,10 +159,11 @@ impl SMesh {
 
         Ok(new_faces)
     }
-    /// Inset a single face by creating a smaller inner face connected to the
-    /// original boundary by quad side faces. The inner face vertices are
-    /// moved toward the face centroid by `amount` (0.0 = no inset, 1.0 =
-    /// collapsed to centroid). Returns the new inner face.
+    /// Inset a face: create a shrunken copy inside it connected by quads.
+    ///
+    /// `amount` is the lerp factor from each original vertex toward the face
+    /// centroid: `0.0` leaves the face unchanged, `1.0` collapses all inner
+    /// vertices to the centroid. Returns the new inner face.
     pub fn inset(&mut self, face: FaceId, amount: f32) -> SMeshResult<FaceId> {
         let vertices = face.vertices(self).collect_vec();
         let centroid = self.get_face_centroid(face)?;
@@ -146,9 +191,11 @@ impl SMesh {
         Ok(inner_face)
     }
 
-    /// Inset multiple faces together. Shared edges between selected faces
-    /// are preserved (no side quads are created along them). Returns the
-    /// new inner faces.
+    /// Inset a connected region of faces together.
+    ///
+    /// Shared edges between selected faces are preserved — no wall quads are
+    /// created there. Vertices at region corners use the average of their
+    /// incident face centroids. Returns the new inner faces in input order.
     pub fn inset_faces(
         &mut self,
         faces: Vec<FaceId>,
@@ -245,6 +292,14 @@ impl SMesh {
         Ok(new_faces)
     }
 
+    /// Extrude a boundary edge, adding a new quad face.
+    ///
+    /// `e0` may be either the boundary halfedge or its inner-face opposite —
+    /// the method picks the boundary side automatically. The returned
+    /// halfedge is the new outer boundary of the extruded quad.
+    ///
+    /// Errors with [`SMeshError::CustomError`] if `e0` is not adjacent to a
+    /// boundary.
     pub fn extrude_edge(&mut self, e0: HalfedgeId) -> SMeshResult<HalfedgeId> {
         // Find boundary halfedge
         let e0 = match e0.is_boundary(self) {
@@ -272,6 +327,12 @@ impl SMesh {
         Ok(new_edge)
     }
 
+    /// Extrude a contiguous chain of boundary edges in one step.
+    ///
+    /// `edges` must be ordered so that `edges[i].next() == edges[i+1]` on the
+    /// boundary. An open chain produces `edges.len()` wall quads; a closed
+    /// loop produces `edges.len()` quads with the last wrapping back.
+    /// Returns the new outer boundary halfedges of the resulting band.
     pub fn extrude_edge_chain(&mut self, edges: Vec<HalfedgeId>) -> SMeshResult<Vec<HalfedgeId>> {
         let mut boundary_edges = Vec::new();
         for e in edges {
@@ -342,6 +403,17 @@ impl SMesh {
         Ok(new_edges)
     }
 
+    /// Linear subdivision: split every selected edge at its midpoint and
+    /// subdivide each selected face.
+    ///
+    /// Triangles are replaced by four triangles (midpoint quadrisection);
+    /// quads are replaced by four quads with a new centre vertex. N-gons
+    /// keep their overall shape but pick up new vertices at each edge
+    /// midpoint. Positions are linear — use
+    /// [`smooth_subdivide`](Self::smooth_subdivide) for Catmull–Clark.
+    ///
+    /// Returns a [`MeshSelection`] containing the new halfedges and faces
+    /// created by the subdivision.
     pub fn subdivide<T: Into<MeshSelection>>(
         &mut self,
         selection: T,
@@ -420,15 +492,17 @@ impl SMesh {
         Ok(selection)
     }
 
-    /// Catmull-Clark smooth subdivision.
+    /// Catmull–Clark smooth subdivision, applied `iterations` times.
     ///
-    /// Subdivides the mesh topology (same as `subdivide`) but positions new and
-    /// existing vertices using Catmull-Clark weighting rules to approximate a
-    /// smooth limit surface. Supports multiple iterations.
+    /// Topology is identical to [`subdivide`](Self::subdivide), but new
+    /// vertices are placed according to the Catmull–Clark weighting rules
+    /// (face point, edge point, vertex rule) and existing vertices are
+    /// repositioned to smooth the surface. Boundary vertices follow the
+    /// boundary-preserving CC rule so open boundaries stay on the hull.
     ///
-    /// For quad-dominant meshes this produces the standard CC surface. Triangle
-    /// faces are subdivided into quads (with a center vertex), so repeated
-    /// iterations converge to all-quads.
+    /// Triangles become quads (centre vertex + three edge splits), so after
+    /// one iteration the entire selection is quad-dominant and further
+    /// iterations produce a standard CC surface. N-gons are left as n-gons.
     pub fn smooth_subdivide<S: Into<MeshSelection> + Clone>(
         &mut self,
         selection: S,
@@ -663,13 +737,15 @@ impl SMesh {
         Ok(result_selection)
     }
 
-    /// Perform a loop cut along an edge loop, splitting faces at parameter `t` (0..1).
+    /// Insert a loop cut along a row of quads.
     ///
-    /// Starting from `start_edge`, traces across quad faces by following
-    /// opposite edges (next.next in a quad). Splits each crossed edge and
-    /// reconnects the resulting faces into two quads each.
+    /// Starting from `start_edge`, walks across quad faces via the "across"
+    /// edge (`current.next().next()`), splits each crossed edge at parameter
+    /// `t ∈ (0, 1)`, and reconnects the touched faces into pairs of quads.
+    /// Stops at a boundary, a non-quad face, or when the walk closes a loop.
     ///
-    /// Returns a `MeshSelection` containing the new edge loop vertices and halfedges.
+    /// Returns a [`MeshSelection`] containing the new midpoint vertices, the
+    /// connecting halfedges, and the resulting face pairs.
     pub fn loop_cut(&mut self, start_edge: HalfedgeId, t: f32) -> SMeshResult<MeshSelection> {
         let t = t.clamp(0.001, 0.999);
 
@@ -816,18 +892,14 @@ impl SMesh {
         Ok(selection)
     }
 
-    /// Merge nearby vertices that are within `threshold` distance of each other.
+    /// Collapse several vertices into a single vertex at `target`.
     ///
-    /// Uses union-find to handle transitive merges (A near B, B near C → all merge).
-    /// For each cluster, picks one representative and reroutes all halfedges.
-    /// Cleans up degenerate edges and faces after merging.
+    /// The first vertex in `vertices` becomes the survivor; every other
+    /// vertex's incoming halfedges are rerouted to it. Degenerate edges
+    /// (self-loops) and faces (fewer than three unique vertices) are deleted
+    /// automatically. Returns the surviving vertex id.
     ///
-    /// Returns the number of vertex merges performed.
-    /// Merge multiple vertices into a single vertex at the given position.
-    ///
-    /// All halfedge references to the merged vertices are rerouted to the
-    /// surviving vertex. Degenerate edges and faces created by the merge
-    /// are cleaned up automatically. Returns the surviving vertex ID.
+    /// Errors with [`SMeshError::CustomError`] if the input list is empty.
     pub fn merge_vertices(
         &mut self,
         vertices: &[VertexId],
@@ -917,6 +989,14 @@ impl SMesh {
         Ok(rep)
     }
 
+    /// Weld every pair of vertices within `threshold` distance into one.
+    ///
+    /// Handles transitive clusters via union–find (A≈B, B≈C → all three
+    /// merge). Each cluster collapses to the average of its member positions.
+    /// Degenerate edges and faces are cleaned up afterwards.
+    ///
+    /// Returns the number of individual vertex merges performed (cluster of
+    /// size *k* counts as *k − 1* merges). O(n²) in the vertex count.
     pub fn weld_vertices(&mut self, threshold: f32) -> SMeshResult<usize> {
         let threshold_sq = threshold * threshold;
         let verts: Vec<VertexId> = self.vertices().collect();
@@ -1073,14 +1153,16 @@ impl SMesh {
         Ok(total_merges)
     }
 
-    /// Bridge two ordered vertex rings with quad faces.
+    /// Connect two ordered vertex rings with a ring of quad faces.
     ///
-    /// Takes two rings of vertices and connects corresponding pairs with quads.
-    /// Both rings must have the same number of vertices. The function finds the
-    /// optimal rotational alignment to minimize total edge-crossing distance.
+    /// Both rings must contain the same number of vertices (n ≥ 3). The
+    /// method auto-rotates `loop_b` to minimise the sum of squared distances
+    /// between paired vertices, then creates `n` quads with winding
+    /// `a_i → b_i → b_{i+1} → a_{i+1}` (outward-facing normals under a
+    /// right-hand rule).
     ///
-    /// Winding: `loop_a` vertices are used in order, `loop_b` in reverse, so the
-    /// resulting quads have consistent normals pointing outward from the bridge.
+    /// Errors with [`SMeshError::CustomError`] if the rings mismatch or a
+    /// ring has fewer than three vertices.
     pub fn bridge_vertices(
         &mut self,
         loop_a: &[VertexId],
@@ -1113,11 +1195,11 @@ impl SMesh {
         Ok(faces)
     }
 
-    /// Bridge two boundary edge loops with quad faces.
+    /// Connect two boundary halfedge loops with a ring of quads.
     ///
-    /// Each loop is a list of boundary halfedges forming a closed ring.
-    /// The function extracts the vertex rings from the halfedge loops,
-    /// finds optimal alignment, and connects them with quads.
+    /// Extracts vertex rings from each halfedge loop and forwards to
+    /// [`bridge_vertices`](Self::bridge_vertices). Every halfedge in both
+    /// loops must be a boundary halfedge (no face on this side).
     pub fn bridge(
         &mut self,
         loop_a: &[HalfedgeId],
@@ -1175,6 +1257,16 @@ impl SMesh {
         Ok(best_offset)
     }
 
+    /// Append every element of `other` into `self` (disjoint union).
+    ///
+    /// Element ids from `other` are remapped to fresh ids in `self`, so
+    /// existing ids continue to be valid. Copies positions, face normals,
+    /// vertex normals, and vertex UVs — custom attribute maps are **not**
+    /// currently copied.
+    ///
+    /// The two meshes are not welded after combining; call
+    /// [`weld_vertices`](Self::weld_vertices) if you need coincident vertices
+    /// to fuse.
     pub fn combine_with(&mut self, other: SMesh) -> SMeshResult<()> {
         // Copy verts
         let mut v_map = HashMap::new();

@@ -1,3 +1,24 @@
+//! User-defined per-element attributes.
+//!
+//! Alongside the built-in position / normal / UV maps, every [`SMesh`]
+//! carries string-keyed [`CustomAttributeMap`]s on vertices, halfedges, and
+//! faces. Values are stored as [`MeshAttribute`] (an enum over a small set of
+//! common types) and retrieved via the typed
+//! [`CustomAttributeMapOps::get`] / [`CustomAttributeMapOps::insert`] accessors.
+//!
+//! ```
+//! use glam::vec3;
+//! use smesh::prelude::*;
+//!
+//! let mut mesh = SMesh::new();
+//! let v = mesh.add_vertex(vec3(0.0, 0.0, 0.0));
+//!
+//! // Create the map, then use CustomAttributeMapOps to write / read.
+//! let map = mesh.add_attribute_map::<VertexId>("curvature").unwrap();
+//! map.insert(v, 0.42_f32);
+//! assert_eq!(map.get(v), Some(0.42_f32));
+//! ```
+
 use core::f32;
 
 use glam::{i32, Vec2, Vec3};
@@ -5,12 +26,22 @@ use slotmap::SecondaryMap;
 
 use crate::{bail, prelude::*};
 
+/// Value stored in a [`CustomAttributeMap`].
+///
+/// One of a handful of common types. Conversion to/from the native Rust
+/// representation is automatic when you use
+/// [`CustomAttributeMapOps::insert`] / [`get`](CustomAttributeMapOps::get).
 #[derive(Debug, Clone)]
 pub enum MeshAttribute {
+    /// 32-bit signed integer.
     Integer(i32),
+    /// 32-bit float.
     Float(f32),
+    /// 2D vector.
     Vec2(Vec2),
+    /// 3D vector.
     Vec3(Vec3),
+    /// UTF-8 string.
     String(String),
 }
 
@@ -98,17 +129,32 @@ impl TryFrom<MeshAttribute> for String {
     }
 }
 
+/// A named map from mesh element ids to [`MeshAttribute`] values.
+///
+/// Stored on the mesh under a name string — see
+/// [`SMesh::attribute`](crate::prelude::SMesh::attribute) and
+/// [`SMesh::add_attribute_map`](crate::prelude::SMesh::add_attribute_map).
+/// Values are transparently converted to the `MeshAttribute` variant matching
+/// their type, and `get`/`insert` round-trip back to the native type.
 #[derive(Debug, Clone, Default)]
 pub struct CustomAttributeMap<T: slotmap::Key> {
     inner_map: SecondaryMap<T, MeshAttribute>,
 }
 
+/// Typed access to a [`CustomAttributeMap`].
+///
+/// Implemented generically for any `V` that has a `From`/`TryFrom` pair with
+/// [`MeshAttribute`] — the supported built-ins are `i32`, `f32`, `Vec2`,
+/// `Vec3`, and `String`.
 pub trait CustomAttributeMapOps<K: slotmap::Key, V>
 where
     V: TryFrom<MeshAttribute>,
     MeshAttribute: From<V>,
 {
+    /// Fetch the value for `key`, converted to `V`. `None` if unset or if a
+    /// different type was stored there.
     fn get(&self, key: K) -> Option<V>;
+    /// Store `value` under `key`, returning the previous value if any.
     fn insert(&mut self, key: K, value: V) -> Option<V>;
 }
 
@@ -185,6 +231,11 @@ impl CustomAttributeOps<FaceId> for SMesh {
 }
 
 impl SMesh {
+    /// Borrow an existing attribute map by name. `None` if no such map has
+    /// been created for the element type `K`.
+    ///
+    /// The element type `K` must be explicit — usually `VertexId`,
+    /// `HalfedgeId`, or `FaceId`.
     pub fn attribute<K: slotmap::Key>(&self, key: &str) -> Option<&CustomAttributeMap<K>>
     where
         Self: CustomAttributeOps<K>,
@@ -192,6 +243,7 @@ impl SMesh {
         self.attribute_internal(key)
     }
 
+    /// Mutable counterpart to [`attribute`](Self::attribute).
     pub fn attribute_mut<K: slotmap::Key>(
         &mut self,
         key: &str,
@@ -202,6 +254,9 @@ impl SMesh {
         self.attribute_mut_internal(key)
     }
 
+    /// Create a new empty attribute map under `key` for element type `K` and
+    /// return a mutable reference to it. Overwrites any existing map with
+    /// the same name.
     pub fn add_attribute_map<K: slotmap::Key>(
         &mut self,
         key: &str,

@@ -1,4 +1,15 @@
-
+//! Core library modules.
+//!
+//! Most items are re-exported through [`crate::prelude`]; importing the prelude
+//! is almost always sufficient. This module is organised into logical layers:
+//!
+//! - **Data**: [`model`], [`attribute`], [`error`]
+//! - **Navigation**: [`mesh_query`], [`iterators`], [`loops`]
+//! - **Inspection**: [`introspection`], [`validation`], [`spatial_queries`]
+//! - **Authoring**: [`edit_operations`], [`topological_operations`], [`transform`],
+//!   [`selection`], [`tags`], [`primitives`], [`uv_operations`], [`util`]
+//! - **Optional**: `preview` (feature `preview`),
+//!   `xatlas_integration` (feature `xatlas`)
 
 use crate::smesh::mesh_query::*;
 

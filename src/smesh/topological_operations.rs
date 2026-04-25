@@ -1,15 +1,24 @@
+//! Low-level halfedge surgery: inserting, deleting, and recombining edges.
+//!
+//! These operations are the primitives that higher-level ops in the
+//! `edit_operations` and `transform` modules build on top of. Most are
+//! usable directly — e.g. [`SMesh::insert_vertex`] splits an edge without
+//! otherwise disturbing the mesh, which is exactly what you want for custom
+//! subdivisions — but always leave the mesh in a valid state.
+//!
+//! Unsafe-for-topology operations such as
+//! [`delete_only_face`](SMesh::delete_only_face) are clearly marked; they are
+//! useful internally but can produce invalid connectivity if misused.
+
 use std::collections::HashSet;
 
 use itertools::Itertools;
 
 use crate::{bail, prelude::*};
 
-///
-/// Higher-level Topological Operations
-///
+/// Topological primitives.
 impl SMesh {
-    /// whether the mesh a triangle mesh. this function simply tests
-    /// each face, and therefore is not very efficient.
+    /// `true` if every face is a triangle. Scans all faces — O(F).
     pub fn is_triangle_mesh(&self) -> bool {
         for (id, _) in &self.connectivity.faces {
             if id.valence(self) != 3 {
@@ -19,8 +28,7 @@ impl SMesh {
         true
     }
 
-    /// whether the mesh a quad mesh. this function simply tests
-    /// each face, and therefore is not very efficient.
+    /// `true` if every face is a quad. Scans all faces — O(F).
     pub fn is_quad_mesh(&self) -> bool {
         for (id, _) in &self.connectivity.faces {
             if id.valence(self) != 4 {
@@ -30,24 +38,20 @@ impl SMesh {
         true
     }
 
-    /// Subdivide the edge  e = (v0,v1) by splitting it into the two edge
-    /// (v0,p) and (p,v1). Note that this function does not introduce any
-    /// other edge or faces. It simply splits the edge. Returns halfedge that
-    /// points to p.
+    /// Split the edge that `h0` belongs to by inserting `v` in the middle.
     ///
-    /// before:
+    /// `v` must already exist in the mesh at the desired position. The
+    /// operation only splits the edge — no faces are created or removed.
+    /// Returns the new halfedge pointing *to* the original destination
+    /// vertex (i.e. the second half of the split, in the same direction as
+    /// `h0`).
     ///
-    /// v0      h0       v2
-    ///  o--------------->o
-    ///   <---------------
-    ///         o0
+    /// ```text
+    /// before:  v0 ──h0──► v2      (with opposite o0 going back)
     ///
-    /// after:
-    ///
-    /// v0  h0   v   h1   v2
-    ///  o------>o------->o
-    ///   <------ <-------
-    ///     o0       o1
+    /// after:   v0 ──h0──► v ──h1──► v2
+    ///          v0 ◄──o0── v ◄──o1── v2
+    /// ```
     pub fn insert_vertex(&mut self, h0: HalfedgeId, v: VertexId) -> SMeshResult<HalfedgeId> {
         let h2 = h0.next().run(self).ok();
         let o0 = h0.opposite().run(self)?;
@@ -92,6 +96,8 @@ impl SMesh {
         Ok(o1)
     }
 
+    /// Remove `v` along with all its incident faces (and the halfedges those
+    /// faces owned). Leaves the rest of the mesh topologically valid.
     pub fn delete_vertex(&mut self, v: VertexId) -> SMeshResult<()> {
         let incident_faces = v.faces(self).collect_vec();
         for f in incident_faces {
@@ -101,6 +107,7 @@ impl SMesh {
         Ok(())
     }
 
+    /// Remove the edge (both halfedges) and every face incident to either side.
     pub fn delete_edge(&mut self, h: HalfedgeId) -> SMeshResult<()> {
         if let Ok(f) = h.face().run(self) {
             self.delete_face(f)?;
@@ -112,6 +119,9 @@ impl SMesh {
         Ok(())
     }
 
+    /// Delete a face along with any edges and vertices that are left
+    /// completely isolated by its removal. Uses the full PMP face-delete
+    /// algorithm so the surrounding halfedge loops remain consistent.
     pub fn delete_face(&mut self, f: FaceId) -> SMeshResult<()> {
         let mut delete_edges = vec![];
         let mut adjust_edges = vec![];
@@ -177,8 +187,12 @@ impl SMesh {
         Ok(())
     }
 
-    // Delete "only" the face without deleting any of its connected elements
-    // Also removes any references to it in its neighbouring halfedges
+    /// Delete *only* the face, leaving its halfedges as boundary halfedges.
+    ///
+    /// Useful when an operation will immediately rebuild the face with the
+    /// same or a new vertex ring (e.g. [`extrude`](Self::extrude)).
+    /// The surrounding halfedges are updated so they no longer reference the
+    /// deleted face; the edges and vertices themselves are preserved.
     pub fn delete_only_face(&mut self, f: FaceId) -> SMeshResult<()> {
         let adjust_edges = f.halfedges(self).collect_vec();
         // remove face id from he's
@@ -189,8 +203,12 @@ impl SMesh {
         Ok(())
     }
 
-    // Delete "only" the edge without deleting any of its connected vertices
-    // Does delete incident faces
+    /// Delete an edge (both halfedges) without deleting its endpoints.
+    ///
+    /// Faces incident to the edge *are* removed, but the source and
+    /// destination vertices survive. Neighbouring `next`/`prev` links are
+    /// repaired so the mesh stays a valid halfedge structure. Silently
+    /// succeeds if the edge has already been deleted.
     pub fn delete_only_edge(&mut self, e: HalfedgeId) -> SMeshResult<()> {
         if !self.halfedges().contains(&e) {
             // Already deleted
@@ -223,8 +241,11 @@ impl SMesh {
         Ok(())
     }
 
-    /// whether collapsing the halfedge  v0v1 is topologically legal.
-    /// This function is only valid for triangle meshes.
+    /// Check whether [`collapse(v0v1)`](Self::collapse) is topologically legal.
+    ///
+    /// Returns `Ok(())` if safe, or [`SMeshError::DefaultError`] otherwise.
+    /// Valid only for triangle meshes — the test enforces link conditions and
+    /// boundary rules from PMP.
     pub fn is_collapse_ok(&self, v0v1: HalfedgeId) -> SMeshResult<()> {
         let v1v0 = v0v1.opposite().run(self)?;
         let v0 = v1v0.dst_vert().run(self)?;
@@ -281,13 +302,13 @@ impl SMesh {
         Ok(())
     }
 
-    /// Collapse the halfedge h by moving its start vertex into its target
-    /// vertex. For non-boundary halfedges this function removes one vertex, three
-    /// edges, and two faces. For boundary halfedges it removes one vertex, two
-    /// edges and one face.
-    /// This function is only valid for triangle meshes.
-    /// Halfedge collapses might lead to invalid faces. Call
-    /// is_collapse_ok(Halfedge) to be sure the collapse is legal.
+    /// Collapse a halfedge: merge its source vertex into its destination.
+    ///
+    /// For a non-boundary halfedge this removes one vertex, three edges, and
+    /// two faces; for a boundary halfedge it removes one vertex, two edges,
+    /// and one face. Valid only on triangle meshes, and only when
+    /// [`is_collapse_ok`](Self::is_collapse_ok) returns `Ok` — otherwise the
+    /// result may be a non-manifold mesh.
     pub fn collapse(&mut self, h: HalfedgeId) -> SMeshResult<()> {
         let h0 = h;
         let h1 = h0.prev().run(self)?;
@@ -307,6 +328,11 @@ impl SMesh {
         Ok(())
     }
 
+    /// Check whether [`remove_edge(h0)`](Self::remove_edge) is topologically legal.
+    ///
+    /// Returns `Ok(())` if the two faces incident to the edge can be merged,
+    /// or [`SMeshError::TopologyError`] if the merge would introduce a
+    /// non-simple face.
     pub fn is_removal_ok(&self, h0: HalfedgeId) -> SMeshResult<()> {
         let h1 = h0.opposite().run(self)?;
         let v0 = h0.dst_vert().run(self)?;
@@ -335,6 +361,11 @@ impl SMesh {
         Ok(())
     }
 
+    /// Dissolve an edge by merging the two faces on either side into one.
+    ///
+    /// Legal only when both sides have a face and the merge would not
+    /// produce a non-simple face (see [`is_removal_ok`](Self::is_removal_ok)).
+    /// Adjacent halfedge, vertex, and face pointers are all updated.
     pub fn remove_edge(&mut self, h0: HalfedgeId) -> SMeshResult<()> {
         self.is_removal_ok(h0)?;
 
@@ -392,6 +423,11 @@ impl SMesh {
         Ok(())
     }
 
+    /// Internal collapse helper used by [`collapse`](Self::collapse).
+    ///
+    /// Merges the source vertex of `h` into its destination and removes `h`
+    /// itself. Kept public for advanced callers; prefer the safer
+    /// [`collapse`](Self::collapse) entry point.
     pub fn remove_edge_helper(&mut self, h: HalfedgeId) -> SMeshResult<()> {
         let hn = h.next().run(self)?;
         let hp = h.prev().run(self)?;

@@ -1,3 +1,34 @@
+//! Bevy adapter: render and debug-draw SMesh inside a Bevy app.
+//!
+//! Available when the `bevy_adapter` feature is enabled (the default).
+//!
+//! What this module provides:
+//!
+//! - `impl From<SMesh> for bevy::Mesh` — drop any SMesh straight into a
+//!   `Mesh3d` handle by way of `Assets<Mesh>`.
+//! - [`SMeshDebugDrawPlugin`] — renders wireframes and selection gizmos for
+//!   any entity with a [`DebugRenderSMesh`] component; useful during
+//!   procedural iteration.
+//! - [`Selection`] / [`DebugDrawMode`] — per-entity controls for the plugin.
+//! - Triangulated [`VertexIndexUvBuffers`] as the conversion intermediate.
+//!
+//! Typical usage:
+//!
+//! ```no_run
+//! # use bevy::prelude::*;
+//! # use smesh::prelude::*;
+//! # use smesh::adapters::bevy::*;
+//! # fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>,
+//! #          mut mats: ResMut<Assets<StandardMaterial>>) {
+//! # let smesh: SMesh = unimplemented!();
+//! commands.spawn((
+//!     Mesh3d(meshes.add(Mesh::from(smesh.clone()))),
+//!     MeshMaterial3d(mats.add(StandardMaterial::default())),
+//!     DebugRenderSMesh { mesh: smesh, selection: Selection::None, draw_mode: DebugDrawMode::Wireframe },
+//! ));
+//! # }
+//! ```
+
 use attribute::CustomAttributeMapOps;
 use bevy::{
     app::{Plugin, Update}, asset::RenderAssetUsages, color::{
@@ -32,17 +63,25 @@ impl From<SMesh> for Mesh {
     }
 }
 
-/// Classical indexed mesh representation
+/// Triangulated vertex buffer form of a mesh — position/normal/UV streams
+/// plus an index list suitable for uploading to a GPU.
+///
+/// Used as the conversion intermediate when producing a `bevy::Mesh` from
+/// an [`SMesh`]. Vertices are duplicated per-face-corner (so seams in UVs
+/// and normals are preserved), and the index list is just
+/// `[0, 1, 2, ..., positions.len() - 1]`.
 #[derive(Clone, Debug)]
 pub struct VertexIndexUvBuffers {
-    /// Vertex positions, one per vertex.
+    /// World-space vertex positions, one entry per triangle corner.
     pub positions: Vec<Vec3>,
-    /// Vertex normals, one per vertex.
+    /// Corresponding vertex normals. May be empty if the source mesh has no
+    /// face normals populated.
     pub normals: Vec<Vec3>,
-    /// UV coordinated, one per vertex
+    /// Corresponding UVs. May be empty if the source mesh has no UVs.
     pub uvs: Vec<Vec2>,
-    /// Indices: 3*N where N is the number of triangles. Indices point to
-    /// elements of `positions` and `normals`.
+    /// Triangle indices (length = `3 * triangle_count`). Each element indexes
+    /// [`positions`](Self::positions) / [`normals`](Self::normals) /
+    /// [`uvs`](Self::uvs).
     pub indices: Vec<u32>,
 }
 
@@ -108,6 +147,13 @@ impl SMesh {
     }
 }
 
+/// Bevy plugin that renders wireframes, selection gizmos, and an info UI
+/// for any entity carrying a [`DebugRenderSMesh`] component.
+///
+/// Keyboard bindings (active when a selection exists):
+/// - `N` — move selection to a neighbour
+/// - `V` / `E` / `F` — change the selected element kind
+/// - `M` — cycle draw mode
 pub struct SMeshDebugDrawPlugin;
 
 impl Plugin for SMeshDebugDrawPlugin {
@@ -124,26 +170,47 @@ impl Plugin for SMeshDebugDrawPlugin {
     }
 }
 
+/// Currently-selected element for debug rendering / interactive inspection.
+///
+/// One of a vertex, halfedge, face, or nothing. Use `Selection::None` on
+/// entities that should still be debug-drawn but have no active selection.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Selection {
+    /// A single vertex.
     Vertex(VertexId),
+    /// A single halfedge.
     Halfedge(HalfedgeId),
+    /// A single face.
     Face(FaceId),
+    /// No active selection.
     None,
 }
 
+/// How much detail [`SMeshDebugDrawPlugin`] should draw for an entity.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum DebugDrawMode {
+    /// Disable debug drawing entirely.
     #[default]
     Off,
+    /// Draw only the wireframe.
     Wireframe,
+    /// Wireframe plus selection gizmos and supplementary helpers.
     Full,
 }
 
+/// Component that activates [`SMeshDebugDrawPlugin`] for an entity.
+///
+/// Carry a clone of the displayed mesh alongside the rendered
+/// `Mesh3d`; the plugin uses `mesh` as the source of truth for wireframe /
+/// selection visualisation.
 #[derive(Component)]
 pub struct DebugRenderSMesh {
+    /// Clone of the mesh to visualise. Keep in sync with the GPU mesh if
+    /// you're editing in place.
     pub mesh: SMesh,
+    /// Currently highlighted element, or [`Selection::None`].
     pub selection: Selection,
+    /// How much to draw.
     pub draw_mode: DebugDrawMode,
 }
 

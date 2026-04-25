@@ -1,3 +1,21 @@
+//! Software rasterizer for on-disk PNG previews of a mesh.
+//!
+//! Available when the `preview` feature is enabled. This is aimed at
+//! headless procedural workflows and agent feedback loops — it doesn't need
+//! a GPU, a window, or a running Bevy app.
+//!
+//! The high-level entry points are on [`SMesh`] itself:
+//! [`preview_to_file`](SMesh::preview_to_file),
+//! [`preview_with_options`](SMesh::preview_with_options),
+//! [`preview_annotated`](SMesh::preview_annotated), and the checkpoint
+//! helpers [`save_checkpoint`](SMesh::save_checkpoint) /
+//! [`preview_checkpoint`](SMesh::preview_checkpoint) /
+//! [`restore_checkpoint`](SMesh::restore_checkpoint).
+//!
+//! Renders default to a small multi-angle grid; configure with
+//! [`PreviewOptions`] (builder methods) and pass several
+//! [`PreviewView`]s to compare orientations.
+
 use alloc::vec::Vec;
 
 extern crate alloc;
@@ -14,22 +32,32 @@ use std::collections::HashSet;
 
 use crate::prelude::*;
 
-/// A named rendered view of a mesh.
+/// A rendered image of the mesh from a named viewpoint.
 pub struct MeshPreview {
+    /// Name of the view (e.g. `"front"`). Used as the composite-cell label.
     pub name: String,
+    /// The rasterised RGBA image.
     pub image: RgbaImage,
 }
 
-/// Options for mesh preview rendering.
+/// Configuration for a preview render pass.
+///
+/// Build with [`PreviewOptions::default`] and the `with_*` methods:
+/// `PreviewOptions::default().with_wireframe().with_normals()`.
 #[derive(Debug, Clone)]
 pub struct PreviewOptions {
+    /// Width of each individual view in pixels.
     pub width: u32,
+    /// Height of each individual view in pixels.
     pub height: u32,
+    /// Viewpoints to render. If multiple are given, the result is composited
+    /// into a grid.
     pub views: Vec<PreviewView>,
+    /// Overlay the wireframe on top of the filled mesh.
     pub wireframe: bool,
-    /// Highlight specific faces in the render (drawn in a distinct color).
+    /// Faces to highlight in a distinct colour (e.g. to annotate a selection).
     pub highlight_faces: Option<HashSet<FaceId>>,
-    /// Draw face normals as short lines from each face centroid.
+    /// Draw short line segments at each face centroid along its normal.
     pub show_normals: bool,
 }
 
@@ -83,13 +111,25 @@ impl PreviewOptions {
 
 /// View direction for rendering.
 #[derive(Debug, Clone, Copy)]
+/// One of the canonical camera orientations used for preview renders.
+///
+/// `Diagonal` is a three-quarter view, good for getting a single summary
+/// image in composite previews.
+#[derive(Debug, Clone, Copy)]
 pub enum PreviewView {
+    /// Looking down -Z.
     Front,
+    /// Looking down +Z.
     Back,
+    /// Looking down -X.
     Left,
+    /// Looking down +X.
     Right,
+    /// Looking down -Y (i.e. bird's-eye).
     Top,
+    /// Looking down +Y (i.e. up from below).
     Bottom,
+    /// Looking diagonally from +X, -Y, +Z.
     Diagonal,
 }
 
@@ -520,7 +560,9 @@ fn compose_grid(images: &[(String, RgbaImage)], cols: u32, label_scale: u32) -> 
 // --- Public API ---
 
 impl SMesh {
-    /// Render preview images with default options (512x512, standard views, no wireframe).
+    /// Render the four standard views (front, right, top, diagonal) with
+    /// default options at `width × height` pixels each. Returns the images
+    /// tagged with view name.
     pub fn render_previews(&self, width: u32, height: u32) -> Vec<MeshPreview> {
         self.render(
             &PreviewOptions::default()
@@ -528,7 +570,7 @@ impl SMesh {
         )
     }
 
-    /// Render the mesh from specific viewpoints.
+    /// Render the mesh from a custom list of viewpoints.
     pub fn render_views(
         &self,
         width: u32,
@@ -542,7 +584,11 @@ impl SMesh {
         )
     }
 
-    /// Render previews with full control over options.
+    /// Render previews using the full [`PreviewOptions`] configuration.
+    ///
+    /// Returns one [`MeshPreview`] per entry in `opts.views`. Each image has
+    /// solid shading, optional wireframe overlay, optional highlighted
+    /// faces, and optional normal lines.
     pub fn render(&self, opts: &PreviewOptions) -> Vec<MeshPreview> {
         let tri_mesh = triangulate_mesh(self, opts.highlight_faces.as_ref());
         let all_verts: Vec<MeshVertex> = tri_mesh
@@ -635,7 +681,8 @@ impl SMesh {
             .collect()
     }
 
-    /// Render previews and save them to files in the given directory.
+    /// Render the standard views and save each to
+    /// `<dir>/<view_name>.png`. Returns the list of written paths.
     pub fn save_previews(
         &self,
         width: u32,
@@ -652,7 +699,8 @@ impl SMesh {
         Ok(paths)
     }
 
-    /// Render previews with options and save to files.
+    /// Render with custom [`PreviewOptions`] and save each view to a PNG in
+    /// `dir`.
     pub fn save_preview_with_options(
         &self,
         opts: &PreviewOptions,
@@ -668,10 +716,11 @@ impl SMesh {
         Ok(paths)
     }
 
-    /// Render a single composite image with all views in a 2x2 grid.
+    /// Render all views into one composite image laid out in a 2×2 grid.
     ///
-    /// Each cell is rendered at `(width/2, height/2)` and stitched together.
-    /// View labels are drawn in each cell's top-left corner.
+    /// Each cell is `(opts.width / 2, opts.height / 2)` when there are
+    /// multiple views, or the full size for a single view. View labels are
+    /// burnt into each cell's top-left corner.
     pub fn render_composite(&self, opts: &PreviewOptions) -> RgbaImage {
         let cols = if opts.views.len() <= 1 { 1 } else { 2 };
         let cell_w = if cols == 1 { opts.width } else { opts.width / 2 };
@@ -696,7 +745,7 @@ impl SMesh {
         compose_grid(&labeled, cols as u32, label_scale)
     }
 
-    /// Render a composite preview and save to a single file.
+    /// Render a composite preview and save it as a single PNG at `path`.
     pub fn save_composite_preview(
         &self,
         opts: &PreviewOptions,
