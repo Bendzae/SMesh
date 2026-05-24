@@ -23,6 +23,7 @@ bevy = { version = "0.18", default-features = false, features = [
   "bevy_ui",
   "bevy_gizmos",
   "bevy_log",
+  "bevy_anti_alias",
 ], optional = true }
 euc = { version = "0.5.3", optional = true }
 image = { version = "0.25.10", default-features = false, features = ["png"], optional = true }
