@@ -109,8 +109,6 @@ impl PreviewOptions {
     }
 }
 
-/// View direction for rendering.
-#[derive(Debug, Clone, Copy)]
 /// One of the canonical camera orientations used for preview renders.
 ///
 /// `Diagonal` is a three-quarter view, good for getting a single summary
