@@ -168,7 +168,7 @@ fn init_system(
     commands.spawn((
         DirectionalLight {
             illuminance: light_consts::lux::OVERCAST_DAY * 2.0,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             ..default()
         },
         Transform::from_rotation(Quat::from_euler(EulerRot::ZYX, 0.0, PI / 2., -PI / 4.)),
