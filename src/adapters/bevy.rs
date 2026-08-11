@@ -526,7 +526,7 @@ fn update_ui_system(
 #[derive(Component)]
 #[require(
     Camera3d,
-    bevy::render::view::Hdr,
+    bevy::camera::Hdr,
     bevy::anti_alias::taa::TemporalAntiAliasing,
 )]
 pub struct ShowcaseCamera;
@@ -583,7 +583,7 @@ fn showcase_setup(
     commands.spawn((
         DirectionalLight {
             illuminance: light_consts::lux::OVERCAST_DAY * 1.5,
-            shadows_enabled: true,
+            shadow_maps_enabled: true,
             color: Color::srgb(1.0, 0.95, 0.85),
             ..default()
         },
@@ -595,7 +595,7 @@ fn showcase_setup(
         PointLight {
             intensity: 150_000.0,
             color: Color::srgb(0.85, 0.9, 1.0),
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_translation(Vec3::new(2.5, 2.0, 1.5)),
@@ -606,7 +606,7 @@ fn showcase_setup(
         PointLight {
             intensity: 100_000.0,
             color: Color::srgb(1.0, 0.85, 0.6),
-            shadows_enabled: false,
+            shadow_maps_enabled: false,
             ..default()
         },
         Transform::from_translation(Vec3::new(-1.0, 1.5, -2.0)),
