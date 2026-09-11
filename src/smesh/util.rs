@@ -32,7 +32,7 @@ impl SMesh {
         for face in self.faces() {
             // Get the three vertices of the face
             let face_vertices = face.vertices(self).collect_vec();
-            let v0 = face_vertices.get(0).unwrap();
+            let v0 = face_vertices.first().unwrap();
             let v1 = face_vertices.get(1).unwrap();
             let v2 = face_vertices.get(2).unwrap();
 

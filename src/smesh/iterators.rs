@@ -241,13 +241,11 @@ impl FaceIterators for FaceId {
     }
 }
 
+#[cfg(test)]
 mod test {
+    use crate::prelude::*;
     use glam::vec3;
     use itertools::Itertools;
-    use crate::prelude::*;
-    
-    
-    
 
     #[test]
     fn vertex_around_vertex() {

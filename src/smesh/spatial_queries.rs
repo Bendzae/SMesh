@@ -58,11 +58,7 @@ impl SMesh {
     pub fn vertices_where<F: Fn(Vec3) -> bool>(&self, predicate: F) -> MeshSelection {
         let verts: Vec<VertexId> = self
             .vertices()
-            .filter(|v| {
-                v.position(self)
-                    .map(|p| predicate(p))
-                    .unwrap_or(false)
-            })
+            .filter(|v| v.position(self).map(&predicate).unwrap_or(false))
             .collect();
         verts.into()
     }
@@ -74,7 +70,7 @@ impl SMesh {
         for v in self.vertices() {
             if let Ok(pos) = v.position(self) {
                 let dist = (pos - point).length();
-                if best.map_or(true, |(_, d)| dist < d) {
+                if best.is_none_or(|(_, d)| dist < d) {
                     best = Some((v, dist));
                 }
             }
@@ -227,10 +223,14 @@ impl SMesh {
 
             // Fan-triangulate the face and test each triangle
             for i in 1..positions.len() - 1 {
-                if let Some((t, point)) =
-                    ray_triangle_intersection(origin, dir, positions[0], positions[i], positions[i + 1])
-                {
-                    if t > 0.0 && closest.map_or(true, |c| t < c.distance) {
+                if let Some((t, point)) = ray_triangle_intersection(
+                    origin,
+                    dir,
+                    positions[0],
+                    positions[i],
+                    positions[i + 1],
+                ) {
+                    if t > 0.0 && closest.is_none_or(|c| t < c.distance) {
                         let e1 = positions[i] - positions[0];
                         let e2 = positions[i + 1] - positions[0];
                         let normal = e1.cross(e2).normalize_or_zero();
@@ -448,11 +448,7 @@ mod tests {
         .generate()?;
 
         // Select only upward-facing faces near the top
-        let top_faces = mesh.select_region(
-            vec3(0.0, 1.0, 0.0),
-            2.0,
-            Some((Vec3::Y, FRAC_PI_4)),
-        );
+        let top_faces = mesh.select_region(vec3(0.0, 1.0, 0.0), 2.0, Some((Vec3::Y, FRAC_PI_4)));
 
         // Should only get the top face of the cube
         assert_eq!(top_faces.len(), 1);

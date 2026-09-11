@@ -4,13 +4,13 @@ use glam::vec3;
 pub fn vertex_onering() -> SMeshResult<SMesh> {
     let mut mesh = SMesh::new();
 
-    let v0 = mesh.add_vertex(vec3(0.4499998093, 0.5196152329, 0.0000000000));
-    let v1 = mesh.add_vertex(vec3(0.2999998033, 0.5196152329, 0.0000000000));
-    let v2 = mesh.add_vertex(vec3(0.5249998569, 0.3897114396, 0.0000000000));
-    let v3 = mesh.add_vertex(vec3(0.3749998510, 0.3897114396, 0.0000000000));
-    let v4 = mesh.add_vertex(vec3(0.2249998450, 0.3897114396, 0.0000000000));
-    let v5 = mesh.add_vertex(vec3(0.4499999285, 0.2598076165, 0.0000000000));
-    let v6 = mesh.add_vertex(vec3(0.2999999225, 0.2598076165, 0.0000000000));
+    let v0 = mesh.add_vertex(vec3(0.449_999_8, 0.519_615_23, 0.0000000000));
+    let v1 = mesh.add_vertex(vec3(0.299_999_8, 0.519_615_23, 0.0000000000));
+    let v2 = mesh.add_vertex(vec3(0.524_999_86, 0.389_711_44, 0.0000000000));
+    let v3 = mesh.add_vertex(vec3(0.374_999_85, 0.389_711_44, 0.0000000000));
+    let v4 = mesh.add_vertex(vec3(0.224_999_85, 0.389_711_44, 0.0000000000));
+    let v5 = mesh.add_vertex(vec3(0.449_999_93, 0.259_807_62, 0.0000000000));
+    let v6 = mesh.add_vertex(vec3(0.299_999_92, 0.259_807_62, 0.0000000000));
 
     mesh.make_triangle(v3, v0, v1)?;
     mesh.make_triangle(v3, v2, v0)?;
@@ -25,16 +25,16 @@ pub fn vertex_onering() -> SMeshResult<SMesh> {
 pub fn edge_onering() -> SMeshResult<SMesh> {
     let mut mesh = SMesh::new();
 
-    let v0 = mesh.add_vertex(vec3(0.5999997854, 0.5196152329, 0.0000000000));
-    let v1 = mesh.add_vertex(vec3(0.4499998093, 0.5196152329, 0.0000000000));
-    let v2 = mesh.add_vertex(vec3(0.2999998033, 0.5196152329, 0.0000000000));
-    let v3 = mesh.add_vertex(vec3(0.6749998331, 0.3897114396, 0.0000000000));
-    let v4 = mesh.add_vertex(vec3(0.5249998569, 0.3897114396, 0.0000000000));
-    let v5 = mesh.add_vertex(vec3(0.3749998510, 0.3897114396, 0.0000000000));
-    let v6 = mesh.add_vertex(vec3(0.2249998450, 0.3897114396, 0.0000000000));
-    let v7 = mesh.add_vertex(vec3(0.5999999046, 0.2598076165, 0.0000000000));
-    let v8 = mesh.add_vertex(vec3(0.4499999285, 0.2598076165, 0.0000000000));
-    let v9 = mesh.add_vertex(vec3(0.2999999225, 0.2598076165, 0.0000000000));
+    let v0 = mesh.add_vertex(vec3(0.599_999_8, 0.519_615_23, 0.0000000000));
+    let v1 = mesh.add_vertex(vec3(0.449_999_8, 0.519_615_23, 0.0000000000));
+    let v2 = mesh.add_vertex(vec3(0.299_999_8, 0.519_615_23, 0.0000000000));
+    let v3 = mesh.add_vertex(vec3(0.674_999_83, 0.389_711_44, 0.0000000000));
+    let v4 = mesh.add_vertex(vec3(0.524_999_86, 0.389_711_44, 0.0000000000));
+    let v5 = mesh.add_vertex(vec3(0.374_999_85, 0.389_711_44, 0.0000000000));
+    let v6 = mesh.add_vertex(vec3(0.224_999_85, 0.389_711_44, 0.0000000000));
+    let v7 = mesh.add_vertex(vec3(0.599_999_9, 0.259_807_62, 0.0000000000));
+    let v8 = mesh.add_vertex(vec3(0.449_999_93, 0.259_807_62, 0.0000000000));
+    let v9 = mesh.add_vertex(vec3(0.299_999_92, 0.259_807_62, 0.0000000000));
 
     mesh.make_triangle(v4, v0, v1)?;
     mesh.make_triangle(v4, v3, v0)?;

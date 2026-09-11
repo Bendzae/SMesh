@@ -340,7 +340,7 @@ impl SMesh {
             face_count,
             bounding_box: (bb_min, bb_max),
             dimensions: bb_max - bb_min,
-            center: center,
+            center,
             face_type_breakdown: breakdown,
         }
     }
@@ -361,10 +361,8 @@ impl SMesh {
 
                 // Compute face normal and area from first 3 vertices
                 let (normal, area) = if vertex_count >= 3 {
-                    let positions: Vec<Vec3> = verts
-                        .iter()
-                        .filter_map(|v| v.position(self).ok())
-                        .collect();
+                    let positions: Vec<Vec3> =
+                        verts.iter().filter_map(|v| v.position(self).ok()).collect();
                     if positions.len() >= 3 {
                         // For triangles, exact area. For polygons, sum triangle fan areas.
                         let mut total_area = 0.0f32;

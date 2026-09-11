@@ -55,3 +55,6 @@ debug-assertions = false
 [[example]]
 name = "uv_unwrap"
 required-features = ["xatlas"]
+
+[profile.dev]
+split-debuginfo = "packed"

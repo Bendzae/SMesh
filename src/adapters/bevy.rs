@@ -31,12 +31,22 @@
 
 use attribute::CustomAttributeMapOps;
 use bevy::{
-    app::{Plugin, Update}, asset::RenderAssetUsages, color::{
+    app::{Plugin, Update},
+    asset::RenderAssetUsages,
+    color::{
         palettes::css::{GREEN, ORANGE_RED, TURQUOISE, YELLOW},
         Srgba,
-    }, input::ButtonInput, log::{info, warn}, math::Isometry3d, mesh::{Indices, PrimitiveTopology}, prelude::*, text::TextFont, transform::components::Transform, ui::{FlexDirection, Node, UiRect, Val}
+    },
+    input::ButtonInput,
+    log::{info, warn},
+    math::Isometry3d,
+    mesh::{Indices, PrimitiveTopology},
+    prelude::*,
+    text::TextFont,
+    transform::components::Transform,
+    ui::{FlexDirection, Node, UiRect, Val},
 };
-use glam::{bool, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 use itertools::Itertools;
 
 use crate::prelude::*;
@@ -245,14 +255,22 @@ fn debug_draw_wireframe(
     for he_id in mesh.halfedges() {
         let v_src = he_id.src_vert().run(mesh)?;
         let v_dst = he_id.dst_vert().run(mesh)?;
-        let key = if v_src < v_dst { (v_src, v_dst) } else { (v_dst, v_src) };
+        let key = if v_src < v_dst {
+            (v_src, v_dst)
+        } else {
+            (v_dst, v_src)
+        };
         if !drawn_edges.insert(key) {
             continue;
         }
         let p0 = t.transform_point(*mesh.positions.get(v_src).unwrap());
         let p1 = t.transform_point(*mesh.positions.get(v_dst).unwrap());
         let is_boundary = he_id.is_boundary(mesh)
-            || he_id.opposite().run(mesh).map(|o| o.is_boundary(mesh)).unwrap_or(true);
+            || he_id
+                .opposite()
+                .run(mesh)
+                .map(|o| o.is_boundary(mesh))
+                .unwrap_or(true);
         let color = if is_boundary { ORANGE_RED } else { GREEN };
         gizmos.line(p0, p1, color);
     }
@@ -476,10 +494,7 @@ fn update_ui_system(
                     DebugDrawMode::Wireframe => "H: debug gizmos [wireframe]",
                     DebugDrawMode::Full => "H: debug gizmos [full]",
                 };
-                builder.spawn((
-                    Text::new(mode_label),
-                    TextFont::from_font_size(32.0),
-                ));
+                builder.spawn((Text::new(mode_label), TextFont::from_font_size(32.0)));
                 if d.draw_mode == DebugDrawMode::Full {
                     for s in &values {
                         builder.spawn((Text::new(*s), TextFont::from_font_size(32.0)));
@@ -527,7 +542,7 @@ fn update_ui_system(
 #[require(
     Camera3d,
     bevy::camera::Hdr,
-    bevy::anti_alias::taa::TemporalAntiAliasing,
+    bevy::anti_alias::taa::TemporalAntiAliasing
 )]
 pub struct ShowcaseCamera;
 
@@ -611,5 +626,4 @@ fn showcase_setup(
         },
         Transform::from_translation(Vec3::new(-1.0, 1.5, -2.0)),
     ));
-
 }

@@ -251,7 +251,7 @@ impl SMesh {
                     // search a free gap
                     // free gap will be between boundaryPrev and boundaryNext
                     let outer_prev = inner_next.opposite();
-                    let outer_next = inner_prev.opposite();
+                    let _outer_next = inner_prev.opposite();
                     let mut boundary_prev = outer_prev.run(self)?;
                     loop {
                         boundary_prev = boundary_prev.next().opposite().run(self)?;

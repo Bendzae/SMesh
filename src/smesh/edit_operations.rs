@@ -80,10 +80,10 @@ impl SMesh {
         let mut vertex_map = HashMap::new();
         for &face in faces.iter() {
             for vertex in face.vertices(self).collect_vec() {
-                if !vertex_map.contains_key(&vertex) {
+                if let std::collections::hash_map::Entry::Vacant(e) = vertex_map.entry(vertex) {
                     let position = vertex.position(self)?;
                     let new_vertex = self.add_vertex(position);
-                    vertex_map.insert(vertex, new_vertex);
+                    e.insert(new_vertex);
                 }
             }
         }
@@ -196,11 +196,7 @@ impl SMesh {
     /// Shared edges between selected faces are preserved — no wall quads are
     /// created there. Vertices at region corners use the average of their
     /// incident face centroids. Returns the new inner faces in input order.
-    pub fn inset_faces(
-        &mut self,
-        faces: Vec<FaceId>,
-        amount: f32,
-    ) -> SMeshResult<Vec<FaceId>> {
+    pub fn inset_faces(&mut self, faces: Vec<FaceId>, amount: f32) -> SMeshResult<Vec<FaceId>> {
         // Step 1: Compute centroid per face and create new inset vertices
         let mut vertex_map: HashMap<VertexId, VertexId> = HashMap::new();
         let mut face_centroids: HashMap<FaceId, glam::Vec3> = HashMap::new();
@@ -216,7 +212,9 @@ impl SMesh {
         for &face in &faces {
             let centroid = face_centroids[&face];
             for v in face.vertices(self) {
-                let entry = vertex_centroid_sum.entry(v).or_insert((glam::Vec3::ZERO, 0));
+                let entry = vertex_centroid_sum
+                    .entry(v)
+                    .or_insert((glam::Vec3::ZERO, 0));
                 entry.0 += centroid;
                 entry.1 += 1;
             }
@@ -522,7 +520,8 @@ impl SMesh {
     ) -> SMeshResult<MeshSelection> {
         let s: MeshSelection = selection.into();
         let faces: Vec<FaceId> = s.clone().resolve_to_faces(self)?.into_iter().collect();
-        let halfedges: Vec<HalfedgeId> = s.clone().resolve_to_halfedges(self)?.into_iter().collect();
+        let halfedges: Vec<HalfedgeId> =
+            s.clone().resolve_to_halfedges(self)?.into_iter().collect();
 
         // --- Phase 1: Precompute Catmull-Clark positions ---
 
@@ -654,14 +653,11 @@ impl SMesh {
                 (he_opposite, he)
             };
 
-            let midpoint = edge_points
-                .get(&key)
-                .copied()
-                .unwrap_or_else(|| {
-                    let p0 = he.src_vert().position(self).unwrap_or_default();
-                    let p1 = he.dst_vert().position(self).unwrap_or_default();
-                    0.5 * (p0 + p1)
-                });
+            let midpoint = edge_points.get(&key).copied().unwrap_or_else(|| {
+                let p0 = he.src_vert().position(self).unwrap_or_default();
+                let p1 = he.dst_vert().position(self).unwrap_or_default();
+                0.5 * (p0 + p1)
+            });
 
             let v = self.add_vertex(midpoint);
             edge_vertex_positions.insert(v, midpoint);
@@ -678,9 +674,10 @@ impl SMesh {
         // Subdivide faces
         for &f in &faces {
             let valence = f.valence(self) / 2;
-            let corner = face_corners.get(&f).copied().unwrap_or_else(|| {
-                f.halfedge().src_vert().run(self).unwrap()
-            });
+            let corner = face_corners
+                .get(&f)
+                .copied()
+                .unwrap_or_else(|| f.halfedge().src_vert().run(self).unwrap());
             let corner_edge = f
                 .halfedges(self)
                 .find(|he| he.src_vert().run(self).unwrap() == corner)
@@ -689,9 +686,10 @@ impl SMesh {
 
             if valence == 3 {
                 // For CC, triangles get a center vertex and produce quads
-                let fp = face_points.get(&f).copied().unwrap_or_else(|| {
-                    self.get_face_centroid(f).unwrap_or_default()
-                });
+                let fp = face_points
+                    .get(&f)
+                    .copied()
+                    .unwrap_or_else(|| self.get_face_centroid(f).unwrap_or_default());
                 let v_c = self.add_vertex(fp);
                 face_vertex_positions.insert(v_c, fp);
                 self.delete_only_face(f)?;
@@ -707,9 +705,10 @@ impl SMesh {
                     result_selection.insert(f);
                 }
             } else if valence == 4 {
-                let fp = face_points.get(&f).copied().unwrap_or_else(|| {
-                    self.get_face_centroid(f).unwrap_or_default()
-                });
+                let fp = face_points
+                    .get(&f)
+                    .copied()
+                    .unwrap_or_else(|| self.get_face_centroid(f).unwrap_or_default());
                 let v_c = self.add_vertex(fp);
                 face_vertex_positions.insert(v_c, fp);
                 self.delete_only_face(f)?;
@@ -1352,7 +1351,7 @@ impl SMesh {
                 self.vertex_uvs.as_mut().unwrap().insert(v_map[&id], value);
             }
         }
-        // TODO: copy custom attributes 
+        // TODO: copy custom attributes
         // for attr in self.vertex_attributes {
         //
         // }
@@ -1485,7 +1484,13 @@ mod tests {
         // Find a non-boundary halfedge that belongs to a quad face
         let he = mesh
             .halfedges()
-            .find(|&h| !h.is_boundary(&mesh) && h.face().run(&mesh).map(|f| f.valence(&mesh) == 4).unwrap_or(false))
+            .find(|&h| {
+                !h.is_boundary(&mesh)
+                    && h.face()
+                        .run(&mesh)
+                        .map(|f| f.valence(&mesh) == 4)
+                        .unwrap_or(false)
+            })
             .unwrap();
 
         mesh.loop_cut(he, 0.5)?;
@@ -1618,9 +1623,13 @@ mod tests {
         let he = mesh
             .halfedges()
             .find(|&h| {
-                if h.is_boundary(&mesh) { return false; }
+                if h.is_boundary(&mesh) {
+                    return false;
+                }
                 let face = h.face().run(&mesh).ok();
-                if face.map(|f| f.valence(&mesh)).unwrap_or(0) != 4 { return false; }
+                if face.map(|f| f.valence(&mesh)).unwrap_or(0) != 4 {
+                    return false;
+                }
                 let src = h.src_vert().position(&mesh).unwrap_or_default();
                 let dst = h.dst_vert().position(&mesh).unwrap_or_default();
                 (dst - src).normalize().y.abs() > 0.8
@@ -1636,9 +1645,13 @@ mod tests {
         let he2 = mesh
             .halfedges()
             .find(|&h| {
-                if h.is_boundary(&mesh) { return false; }
+                if h.is_boundary(&mesh) {
+                    return false;
+                }
                 let face = h.face().run(&mesh).ok();
-                if face.map(|f| f.valence(&mesh)).unwrap_or(0) != 4 { return false; }
+                if face.map(|f| f.valence(&mesh)).unwrap_or(0) != 4 {
+                    return false;
+                }
                 let src = h.src_vert().position(&mesh).unwrap_or_default();
                 let dst = h.dst_vert().position(&mesh).unwrap_or_default();
                 let dir = (dst - src).normalize();
@@ -1679,8 +1692,16 @@ mod tests {
         let inner_v = inner.vertices(mesh).next().unwrap();
         let pos = inner_v.position(mesh)?;
         // At 50% inset, vertices should be halfway to centroid
-        assert!(pos.x.abs() < 0.6, "Inner vertex should be inset, got x={}", pos.x);
-        assert!(pos.z.abs() < 0.6, "Inner vertex should be inset, got z={}", pos.z);
+        assert!(
+            pos.x.abs() < 0.6,
+            "Inner vertex should be inset, got x={}",
+            pos.x
+        );
+        assert!(
+            pos.z.abs() < 0.6,
+            "Inner vertex should be inset, got z={}",
+            pos.z
+        );
 
         Ok(())
     }
@@ -1753,10 +1774,7 @@ mod tests {
         assert_eq!(mesh.vertices().len(), 8);
 
         // Bridge the two vertex rings
-        let faces = mesh.bridge_vertices(
-            &[a0, a1, a2, a3],
-            &[b0, b1, b2, b3],
-        )?;
+        let faces = mesh.bridge_vertices(&[a0, a1, a2, a3], &[b0, b1, b2, b3])?;
 
         assert_eq!(faces.len(), 4, "Should create 4 quad faces");
         assert_eq!(mesh.faces().len(), 4);
@@ -1898,7 +1916,11 @@ mod tests {
         }
 
         let report = mesh.validate();
-        assert!(report.is_valid(), "Capped bridge should be valid: {}", report);
+        assert!(
+            report.is_valid(),
+            "Capped bridge should be valid: {}",
+            report
+        );
         Ok(())
     }
 
