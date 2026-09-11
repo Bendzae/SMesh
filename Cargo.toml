@@ -36,6 +36,10 @@ bevy_hotpatching_experiments = "0.4.0"
 fastrand = "2.3.0"
 fastrand-contrib = "0.1.0"
 
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+# Bevy 0.19 uses macOS window APIs absent from older winit 0.30 releases.
+# Keep a compatible version floor even when reusing an old, untracked lockfile.
+winit = { version = "0.30.13", default-features = false }
 
 [features]
 default = ["bevy_adapter"]
